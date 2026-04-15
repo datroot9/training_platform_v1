@@ -1,0 +1,52 @@
+Project Context: Trainee Management System
+1. Project Vision
+The Trainee Management System is designed to provide transparency and structure to the internship/training process. It facilitates daily interaction between Mentors and Trainees through automated task assignments, daily progress reporting, and performance tracking.
+
+2. User Roles & Responsibilities
+Role A: Trainee (The Learner)
+Task Management: View assigned tasks derived from a specific training curriculum.
+
+Daily Reporting: * Document "What was done," "Planned for tomorrow," and "Issues/Blockers."
+
+Log Man-hours spent on specific tasks.
+
+Progress Tracking: Monitor personal completion rates and view feedback from Mentors.
+
+Q&A: Send direct inquiries to Mentors regarding specific tasks or blockers.
+
+Role B: Mentor (The Supervisor)
+Curriculum Management: Create training roadmaps (Curricula) by uploading learning materials (PDFs) and defining task templates.
+
+Review & Governance:
+
+Approve or request revisions for Trainees' daily reports.
+
+Provide feedback and grades based on performance and attitude.
+
+Monitoring (Dashboard): Track the real-time status of all assigned Trainees to identify those who are falling behind or facing critical issues.
+
+Account Management: Manage Trainee profiles and system access.
+
+3. Core Business Workflow
+Onboarding: A Mentor creates a Trainee account and assigns a specific Curriculum. The system automatically generates a list of Tasks for that Trainee based on the curriculum templates.
+
+Daily Execution: * The Trainee starts a task and logs progress.
+
+At the end of the day, the Trainee submits a Daily Report.
+
+Status Lifecycle: * A report starts as a DRAFT.
+
+Once the Trainee clicks "Submit," it changes to SUBMITTED.
+
+Submission triggers an automated notification to the Mentor via external Chatops (e.g., Slack/Discord).
+
+Review Loop: * The Mentor reviews the report and marks it as APPROVED (closing the task/day) or REVISION_REQUIRED (sending it back to the Trainee for more detail).
+
+Reporting: * Every weekend, the system automatically aggregates all daily data into a Weekly Performance Summary for the Mentor to review.
+
+4. Key Logic Constraints
+Data Integrity: Once a report is APPROVED, it cannot be edited by the Trainee.
+
+Consistency: Daily reports must be linked to active tasks to ensure man-hours are tracked against the correct curriculum items.
+
+Automation: Task generation must be handled by the system immediately upon curriculum assignment to prevent manual entry errors.
