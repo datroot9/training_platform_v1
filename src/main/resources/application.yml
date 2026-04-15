@@ -1,6 +1,8 @@
 spring:
   application:
     name: training_platform_v1
+  autoconfigure:
+    exclude: org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
   config:
     import: optional:file:.env[.properties]
   datasource:
@@ -13,6 +15,13 @@ spring:
     locations: classpath:db/migration
     placeholders:
       "[admin_default_password]": ${ADMIN_DEFAULT_PASSWORD:ChangeMe123!}
+      "[admin_default_password_bcrypt]": ${ADMIN_DEFAULT_PASSWORD_BCRYPT:$2b$12$HXA6msnqqJT.Ef13jSbkBuG0AYfuPa7tFqLiFcqLzUQUMGGoaM0XW}
 
 doma:
   dialect: mysql
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:replace-this-with-a-long-random-secret-32-char-minimum}
+    access-ttl-seconds: ${JWT_ACCESS_TTL_SECONDS:900}
+    refresh-ttl-seconds: ${JWT_REFRESH_TTL_SECONDS:1209600}

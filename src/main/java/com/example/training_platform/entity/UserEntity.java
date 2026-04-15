@@ -24,6 +24,9 @@ public class UserEntity {
     private String email;
     private String fullName;
     private String role;
+    private String passwordHash;
+    private boolean mustChangePassword;
+    private LocalDateTime passwordUpdatedAt;
     private Long mentorId;
     private boolean isActive;
     private LocalDateTime createdAt;
