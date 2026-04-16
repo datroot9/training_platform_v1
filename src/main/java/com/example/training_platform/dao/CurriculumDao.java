@@ -11,6 +11,6 @@ import org.seasar.doma.boot.ConfigAutowireable;
 public interface CurriculumDao {
 
     @Select
-    @Sql("select id, name, description, created_by, created_at, updated_at from curricula where id = /* id */0")
+    @Sql("select id, name, description, status, published_at, created_by, created_at, updated_at from curricula where id = /* id */0")
     CurriculumEntity selectById(Long id);
 }

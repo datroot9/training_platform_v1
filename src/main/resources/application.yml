@@ -1,6 +1,10 @@
 spring:
   application:
     name: training_platform_v1
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 25MB
   autoconfigure:
     exclude: org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
   config:
@@ -25,3 +29,5 @@ app:
     secret: ${JWT_SECRET:replace-this-with-a-long-random-secret-32-char-minimum}
     access-ttl-seconds: ${JWT_ACCESS_TTL_SECONDS:900}
     refresh-ttl-seconds: ${JWT_REFRESH_TTL_SECONDS:1209600}
+  storage:
+    root: ${APP_STORAGE_ROOT:./var/storage}

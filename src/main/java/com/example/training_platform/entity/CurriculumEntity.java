@@ -23,6 +23,8 @@ public class CurriculumEntity {
 
     private String name;
     private String description;
+    private String status;
+    private LocalDateTime publishedAt;
     private Long createdBy;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

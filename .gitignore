@@ -35,3 +35,6 @@ build/
 # Local environment files
 .env
 .env.local
+
+# Uploaded curriculum PDFs (default app.storage.root)
+var/
