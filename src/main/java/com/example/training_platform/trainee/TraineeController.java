@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Map;
 
 import com.example.training_platform.auth.AuthenticatedUser;
+import com.example.training_platform.common.dto.ApiResponse;
 import com.example.training_platform.trainee.dto.CreateTraineeRequest;
 import com.example.training_platform.trainee.dto.CreateTraineeResponse;
 import com.example.training_platform.trainee.dto.ResetPasswordResponse;
@@ -11,6 +12,7 @@ import com.example.training_platform.trainee.dto.TraineeResponse;
 import com.example.training_platform.trainee.dto.UpdateTraineeStatusRequest;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -34,32 +36,39 @@ public class TraineeController {
     }
 
     @PostMapping
-    public ResponseEntity<CreateTraineeResponse> create(Authentication authentication,
-                                                        @Valid @RequestBody CreateTraineeRequest request) {
+    public ResponseEntity<ApiResponse<CreateTraineeResponse>> create(Authentication authentication,
+                                                                     @Valid @RequestBody CreateTraineeRequest request) {
         AuthenticatedUser current = (AuthenticatedUser) authentication.getPrincipal();
-        return ResponseEntity.ok(traineeService.create(current.userId(), request));
+        CreateTraineeResponse data = traineeService.create(current.userId(), request);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Trainee created", data));
     }
 
     @GetMapping
-    public ResponseEntity<List<TraineeResponse>> list(Authentication authentication,
-                                                      @RequestParam(value = "q", required = false) String query) {
+    public ResponseEntity<ApiResponse<List<TraineeResponse>>> list(Authentication authentication,
+                                                                   @RequestParam(value = "q", required = false) String query) {
         AuthenticatedUser current = (AuthenticatedUser) authentication.getPrincipal();
-        return ResponseEntity.ok(traineeService.list(current.userId(), query));
+        List<TraineeResponse> data = traineeService.list(current.userId(), query);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Trainee list fetched", data));
     }
 
     @PatchMapping("/{id}/status")
-    public ResponseEntity<Map<String, Object>> updateStatus(Authentication authentication,
-                                                            @PathVariable("id") Long traineeId,
-                                                            @RequestBody UpdateTraineeStatusRequest request) {
+    public ResponseEntity<ApiResponse<Map<String, Object>>> updateStatus(Authentication authentication,
+                                                                         @PathVariable("id") Long traineeId,
+                                                                         @RequestBody UpdateTraineeStatusRequest request) {
         AuthenticatedUser current = (AuthenticatedUser) authentication.getPrincipal();
         traineeService.setActive(current.userId(), traineeId, request.active());
-        return ResponseEntity.ok(Map.of("id", traineeId, "active", request.active()));
+        return ResponseEntity.ok(ApiResponse.success(
+                HttpStatus.OK.value(),
+                "Trainee status updated",
+                Map.of("id", traineeId, "active", request.active())
+        ));
     }
 
     @PostMapping("/{id}/reset-password")
-    public ResponseEntity<ResetPasswordResponse> resetPassword(Authentication authentication,
-                                                               @PathVariable("id") Long traineeId) {
+    public ResponseEntity<ApiResponse<ResetPasswordResponse>> resetPassword(Authentication authentication,
+                                                                            @PathVariable("id") Long traineeId) {
         AuthenticatedUser current = (AuthenticatedUser) authentication.getPrincipal();
-        return ResponseEntity.ok(traineeService.resetPassword(current.userId(), traineeId));
+        ResetPasswordResponse data = traineeService.resetPassword(current.userId(), traineeId);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Trainee password reset", data));
     }
 }

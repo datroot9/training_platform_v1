@@ -3,6 +3,7 @@ package com.example.training_platform.curriculum;
 import java.util.List;
 
 import com.example.training_platform.auth.AuthenticatedUser;
+import com.example.training_platform.common.dto.ApiResponse;
 import com.example.training_platform.curriculum.dto.CreateCurriculumRequest;
 import com.example.training_platform.curriculum.dto.CreateTaskTemplateRequest;
 import com.example.training_platform.curriculum.dto.CurriculumDetailResponse;
@@ -46,96 +47,104 @@ public class CurriculumController {
 
     @PostMapping
     @Operation(summary = "Create curriculum (DRAFT)")
-    public ResponseEntity<CurriculumResponse> create(Authentication authentication,
-                                                     @Valid @RequestBody CreateCurriculumRequest request) {
+    public ResponseEntity<ApiResponse<CurriculumResponse>> create(Authentication authentication,
+                                                                  @Valid @RequestBody CreateCurriculumRequest request) {
         AuthenticatedUser current = (AuthenticatedUser) authentication.getPrincipal();
         CurriculumResponse body = curriculumService.create(current.userId(), request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(body);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success(HttpStatus.CREATED.value(), "Curriculum created", body));
     }
 
     @GetMapping
     @Operation(summary = "List my curricula")
-    public ResponseEntity<List<CurriculumResponse>> list(Authentication authentication,
-                                                         @RequestParam(value = "q", required = false) String query) {
+    public ResponseEntity<ApiResponse<List<CurriculumResponse>>> list(Authentication authentication,
+                                                                      @RequestParam(value = "q", required = false) String query) {
         AuthenticatedUser current = (AuthenticatedUser) authentication.getPrincipal();
-        return ResponseEntity.ok(curriculumService.list(current.userId(), query));
+        List<CurriculumResponse> data = curriculumService.list(current.userId(), query);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Curriculum list fetched", data));
     }
 
     @GetMapping("/{id}")
     @Operation(summary = "Get curriculum detail with materials and task templates")
-    public ResponseEntity<CurriculumDetailResponse> getDetail(Authentication authentication,
-                                                            @PathVariable("id") Long curriculumId) {
+    public ResponseEntity<ApiResponse<CurriculumDetailResponse>> getDetail(Authentication authentication,
+                                                                           @PathVariable("id") Long curriculumId) {
         AuthenticatedUser current = (AuthenticatedUser) authentication.getPrincipal();
-        return ResponseEntity.ok(curriculumService.getDetail(current.userId(), curriculumId));
+        CurriculumDetailResponse data = curriculumService.getDetail(current.userId(), curriculumId);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Curriculum detail fetched", data));
     }
 
     @PatchMapping("/{id}")
     @Operation(summary = "Update curriculum metadata (DRAFT only)")
-    public ResponseEntity<CurriculumResponse> update(Authentication authentication,
-                                                   @PathVariable("id") Long curriculumId,
-                                                   @Valid @RequestBody UpdateCurriculumRequest request) {
+    public ResponseEntity<ApiResponse<CurriculumResponse>> update(Authentication authentication,
+                                                                  @PathVariable("id") Long curriculumId,
+                                                                  @Valid @RequestBody UpdateCurriculumRequest request) {
         AuthenticatedUser current = (AuthenticatedUser) authentication.getPrincipal();
-        return ResponseEntity.ok(curriculumService.update(current.userId(), curriculumId, request));
+        CurriculumResponse data = curriculumService.update(current.userId(), curriculumId, request);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Curriculum updated", data));
     }
 
     @PostMapping(value = "/{id}/materials", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @Operation(summary = "Upload a PDF learning material (DRAFT only)")
-    public ResponseEntity<LearningMaterialResponse> uploadMaterial(
+    public ResponseEntity<ApiResponse<LearningMaterialResponse>> uploadMaterial(
             Authentication authentication,
             @PathVariable("id") Long curriculumId,
             @Parameter(description = "PDF file") @RequestPart("file") MultipartFile file,
             @Parameter(description = "Sort order within curriculum; omit to append at the end") @RequestParam(value = "sortOrder", required = false) Integer sortOrder) {
         AuthenticatedUser current = (AuthenticatedUser) authentication.getPrincipal();
+        LearningMaterialResponse data = curriculumService.addMaterial(current.userId(), curriculumId, file, sortOrder);
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(curriculumService.addMaterial(current.userId(), curriculumId, file, sortOrder));
+                .body(ApiResponse.success(HttpStatus.CREATED.value(), "Learning material uploaded", data));
     }
 
     @DeleteMapping("/{id}/materials/{materialId}")
     @Operation(summary = "Delete a learning material and its stored file (DRAFT only)")
-    public ResponseEntity<Void> deleteMaterial(Authentication authentication,
-                                               @PathVariable("id") Long curriculumId,
-                                               @PathVariable("materialId") Long materialId) {
+    public ResponseEntity<ApiResponse<Void>> deleteMaterial(Authentication authentication,
+                                                            @PathVariable("id") Long curriculumId,
+                                                            @PathVariable("materialId") Long materialId) {
         AuthenticatedUser current = (AuthenticatedUser) authentication.getPrincipal();
         curriculumService.deleteMaterial(current.userId(), curriculumId, materialId);
-        return ResponseEntity.noContent().build();
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Learning material deleted", null));
     }
 
     @PostMapping("/{id}/task-templates")
     @Operation(summary = "Create task template (DRAFT only)")
-    public ResponseEntity<TaskTemplateResponse> createTaskTemplate(Authentication authentication,
-                                                                   @PathVariable("id") Long curriculumId,
-                                                                   @Valid @RequestBody CreateTaskTemplateRequest request) {
+    public ResponseEntity<ApiResponse<TaskTemplateResponse>> createTaskTemplate(Authentication authentication,
+                                                                                @PathVariable("id") Long curriculumId,
+                                                                                @Valid @RequestBody CreateTaskTemplateRequest request) {
         AuthenticatedUser current = (AuthenticatedUser) authentication.getPrincipal();
         TaskTemplateResponse body = curriculumService.createTaskTemplate(current.userId(), curriculumId, request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(body);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success(HttpStatus.CREATED.value(), "Task template created", body));
     }
 
     @PatchMapping("/{id}/task-templates/{templateId}")
     @Operation(summary = "Update task template (DRAFT only)",
             description = "Set learningMaterialId to 0 to detach from a learning material.")
-    public ResponseEntity<TaskTemplateResponse> updateTaskTemplate(Authentication authentication,
-                                                                   @PathVariable("id") Long curriculumId,
-                                                                   @PathVariable("templateId") Long templateId,
-                                                                   @Valid @RequestBody UpdateTaskTemplateRequest request) {
+    public ResponseEntity<ApiResponse<TaskTemplateResponse>> updateTaskTemplate(Authentication authentication,
+                                                                                @PathVariable("id") Long curriculumId,
+                                                                                @PathVariable("templateId") Long templateId,
+                                                                                @Valid @RequestBody UpdateTaskTemplateRequest request) {
         AuthenticatedUser current = (AuthenticatedUser) authentication.getPrincipal();
-        return ResponseEntity.ok(curriculumService.updateTaskTemplate(current.userId(), curriculumId, templateId, request));
+        TaskTemplateResponse data = curriculumService.updateTaskTemplate(current.userId(), curriculumId, templateId, request);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Task template updated", data));
     }
 
     @DeleteMapping("/{id}/task-templates/{templateId}")
     @Operation(summary = "Delete task template (DRAFT only)")
-    public ResponseEntity<Void> deleteTaskTemplate(Authentication authentication,
-                                                     @PathVariable("id") Long curriculumId,
-                                                     @PathVariable("templateId") Long templateId) {
+    public ResponseEntity<ApiResponse<Void>> deleteTaskTemplate(Authentication authentication,
+                                                                @PathVariable("id") Long curriculumId,
+                                                                @PathVariable("templateId") Long templateId) {
         AuthenticatedUser current = (AuthenticatedUser) authentication.getPrincipal();
         curriculumService.deleteTaskTemplate(current.userId(), curriculumId, templateId);
-        return ResponseEntity.noContent().build();
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Task template deleted", null));
     }
 
     @PostMapping("/{id}/publish")
     @Operation(summary = "Publish curriculum (requires at least one PDF and one task template)")
-    public ResponseEntity<CurriculumResponse> publish(Authentication authentication,
-                                                     @PathVariable("id") Long curriculumId) {
+    public ResponseEntity<ApiResponse<CurriculumResponse>> publish(Authentication authentication,
+                                                                   @PathVariable("id") Long curriculumId) {
         AuthenticatedUser current = (AuthenticatedUser) authentication.getPrincipal();
-        return ResponseEntity.ok(curriculumService.publish(current.userId(), curriculumId));
+        CurriculumResponse data = curriculumService.publish(current.userId(), curriculumId);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Curriculum published", data));
     }
 }

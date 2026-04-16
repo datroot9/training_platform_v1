@@ -376,8 +376,12 @@ public class CurriculumService {
         if (rows.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Curriculum not found");
         }
-        if (!"DRAFT".equals(rows.get(0))) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Curriculum is not editable in its current status");
+        String currentStatus = rows.get(0);
+        if (!"DRAFT".equals(currentStatus)) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Curriculum is " + currentStatus + "; materials and templates can only be modified while status is DRAFT"
+            );
         }
     }
 

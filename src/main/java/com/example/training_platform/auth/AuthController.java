@@ -4,9 +4,11 @@ import com.example.training_platform.auth.dto.AuthResponse;
 import com.example.training_platform.auth.dto.LoginRequest;
 import com.example.training_platform.auth.dto.LogoutRequest;
 import com.example.training_platform.auth.dto.RefreshRequest;
+import com.example.training_platform.common.dto.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -25,20 +27,22 @@ public class AuthController {
 
     @PostMapping("/login")
     @Operation(security = {})
-    public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
-        return ResponseEntity.ok(authService.login(request.email(), request.password()));
+    public ResponseEntity<ApiResponse<AuthResponse>> login(@Valid @RequestBody LoginRequest request) {
+        AuthResponse data = authService.login(request.email(), request.password());
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Login successful", data));
     }
 
     @PostMapping("/refresh")
     @Operation(security = {})
-    public ResponseEntity<AuthResponse> refresh(@Valid @RequestBody RefreshRequest request) {
-        return ResponseEntity.ok(authService.refresh(request.refreshToken()));
+    public ResponseEntity<ApiResponse<AuthResponse>> refresh(@Valid @RequestBody RefreshRequest request) {
+        AuthResponse data = authService.refresh(request.refreshToken());
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Token refreshed", data));
     }
 
     @PostMapping("/logout")
     @SecurityRequirement(name = "bearerAuth")
-    public ResponseEntity<Void> logout(@Valid @RequestBody LogoutRequest request) {
+    public ResponseEntity<ApiResponse<Void>> logout(@Valid @RequestBody LogoutRequest request) {
         authService.logout(request.refreshToken());
-        return ResponseEntity.noContent().build();
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Logout successful", null));
     }
 }

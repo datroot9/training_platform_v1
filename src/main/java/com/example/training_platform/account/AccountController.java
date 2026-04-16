@@ -4,8 +4,10 @@ import java.util.Map;
 
 import com.example.training_platform.account.dto.ChangePasswordRequest;
 import com.example.training_platform.auth.AuthenticatedUser;
+import com.example.training_platform.common.dto.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -25,10 +27,14 @@ public class AccountController {
     }
 
     @PostMapping("/change-password")
-    public ResponseEntity<Map<String, String>> changePassword(Authentication authentication,
-                                                              @Valid @RequestBody ChangePasswordRequest request) {
+    public ResponseEntity<ApiResponse<Map<String, String>>> changePassword(Authentication authentication,
+                                                                           @Valid @RequestBody ChangePasswordRequest request) {
         AuthenticatedUser current = (AuthenticatedUser) authentication.getPrincipal();
         accountService.changePassword(current.userId(), request.oldPassword(), request.newPassword());
-        return ResponseEntity.ok(Map.of("message", "Password changed successfully"));
+        return ResponseEntity.ok(ApiResponse.success(
+                HttpStatus.OK.value(),
+                "Password changed successfully",
+                Map.of("message", "Password changed successfully")
+        ));
     }
 }
