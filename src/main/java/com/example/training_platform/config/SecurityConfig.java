@@ -26,6 +26,7 @@ public class SecurityConfig {
                         .requestMatchers("/error", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers("/api/auth/login", "/api/auth/refresh").permitAll()
                         .requestMatchers("/api/mentor/**").hasRole("MENTOR")
+                        .requestMatchers("/api/trainee/**").hasRole("TRAINEE")
                         .anyRequest().authenticated())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
