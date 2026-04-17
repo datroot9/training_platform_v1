@@ -38,3 +38,7 @@ build/
 
 # Uploaded curriculum PDFs (default app.storage.root)
 var/
+
+# Frontend (Vue/Vite)
+frontend/node_modules/
+frontend/dist/

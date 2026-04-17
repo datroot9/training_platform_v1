@@ -1,0 +1,34 @@
+import { requestJson, requestRaw } from '../client'
+import type { AssignmentResponse, AssignmentTaskResponse } from '../types'
+
+export async function getActiveAssignment(): Promise<AssignmentResponse> {
+  return requestJson<AssignmentResponse>('/api/trainee/assignments/active')
+}
+
+export async function getAssignmentTasks(assignmentId: number): Promise<AssignmentTaskResponse[]> {
+  return requestJson<AssignmentTaskResponse[]>(`/api/trainee/assignments/${assignmentId}/tasks`)
+}
+
+function parseFilename(contentDisposition: string | null): string {
+  if (!contentDisposition) return 'download.pdf'
+  const m = /filename\*?=(?:UTF-8''|")?([^\";]+)/i.exec(contentDisposition)
+  if (m?.[1]) {
+    try {
+      return decodeURIComponent(m[1].replace(/"/g, ''))
+    } catch {
+      return m[1]
+    }
+  }
+  return 'download.pdf'
+}
+
+export async function downloadMaterial(materialId: number): Promise<{ blob: Blob; fileName: string }> {
+  const res = await requestRaw(`/api/trainee/materials/${materialId}/download`, { method: 'GET' })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(text || res.statusText)
+  }
+  const fileName = parseFilename(res.headers.get('Content-Disposition'))
+  const blob = await res.blob()
+  return { blob, fileName }
+}
