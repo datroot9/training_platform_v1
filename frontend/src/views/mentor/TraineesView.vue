@@ -19,6 +19,7 @@ import type { MenuItem } from 'primevue/menuitem'
 import { ApiError } from '../../api/client'
 import * as mentorApi from '../../api/modules/mentor'
 import type { CurriculumResponse, TraineeResponse } from '../../api/types'
+import PageHeader from '../../components/layout/PageHeader.vue'
 
 const toast = useToast()
 
@@ -220,10 +221,7 @@ function onPageChange(event: { first: number; rows: number }): void {
   <div class="trainees-page">
     <Toast position="bottom-right" />
 
-    <div class="header">
-      <h1>Trainee management</h1>
-      <p>Manage your trainees and their progress.</p>
-    </div>
+    <PageHeader title="Trainee management" description="Manage your trainees and their progress." />
 
     <section class="table-shell">
       <div class="table-top">
@@ -358,16 +356,6 @@ function onPageChange(event: { first: number; rows: number }): void {
   display: flex;
   flex-direction: column;
   gap: 1rem;
-}
-
-.header h1 {
-  margin: 0;
-  font-size: 1.9rem;
-}
-
-.header p {
-  margin: 0.3rem 0 0;
-  color: var(--text-muted);
 }
 
 .table-shell {

@@ -17,6 +17,7 @@ import { useToast } from 'primevue/usetoast'
 import { ApiError } from '../../api/client'
 import * as mentorApi from '../../api/modules/mentor'
 import type { CurriculumResponse } from '../../api/types'
+import PageHeader from '../../components/layout/PageHeader.vue'
 
 type StatusFilter = 'ALL' | 'DRAFT' | 'PUBLISHED'
 
@@ -141,12 +142,10 @@ function goDetail(row: CurriculumResponse): void {
   <div class="curricula-page">
     <Toast position="bottom-right" />
 
-    <header class="header">
-      <div>
-        <h1>Curriculum management</h1>
-        <p>Create and maintain curricula before assigning to trainees.</p>
-      </div>
-    </header>
+    <PageHeader
+      title="Curriculum management"
+      description="Create and maintain curricula before assigning to trainees."
+    />
 
     <section class="table-shell">
       <div class="table-tools">
@@ -242,23 +241,6 @@ function goDetail(row: CurriculumResponse): void {
   gap: 1rem;
 }
 
-.header {
-  display: flex;
-  gap: 0.75rem;
-  align-items: flex-start;
-  justify-content: space-between;
-}
-
-.header h1 {
-  margin: 0;
-  font-size: 1.9rem;
-}
-
-.header p {
-  margin: 0.3rem 0 0;
-  color: var(--text-muted);
-}
-
 .table-shell {
   background: #fff;
   border: 1px solid var(--brand-border-soft);
@@ -323,9 +305,5 @@ function goDetail(row: CurriculumResponse): void {
     width: 100%;
   }
 
-  .header {
-    flex-direction: column;
-    align-items: stretch;
-  }
 }
 </style>

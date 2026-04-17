@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import Button from 'primevue/button'
 import Column from 'primevue/column'
 import DataTable from 'primevue/datatable'
@@ -14,16 +14,15 @@ import TabList from 'primevue/tablist'
 import TabPanel from 'primevue/tabpanel'
 import TabPanels from 'primevue/tabpanels'
 import Tabs from 'primevue/tabs'
-import Tag from 'primevue/tag'
 import Textarea from 'primevue/textarea'
 import Toast from 'primevue/toast'
 import { useToast } from 'primevue/usetoast'
 import { ApiError } from '../../api/client'
 import * as mentorApi from '../../api/modules/mentor'
 import type { CurriculumDetailResponse, LearningMaterialResponse, TaskTemplateResponse } from '../../api/types'
+import PageHeader from '../../components/layout/PageHeader.vue'
 
 const route = useRoute()
-const router = useRouter()
 const toast = useToast()
 const curriculumId = computed(() => Number(route.params.id))
 const activeTab = ref('overview')
@@ -79,6 +78,7 @@ const headerDescriptionShort = computed(() => {
   return `${overviewDescription.value.slice(0, 160).trimEnd()}`
 })
 const canExpandHeaderDescription = computed(() => overviewDescription.value.length > 160)
+const headerTagSeverity = computed(() => (isPublished.value ? 'success' : 'warn'))
 
 function formatDate(value?: string | null): string {
   if (!value) return '-'
@@ -96,10 +96,6 @@ function formatDate(value?: string | null): string {
 function mapMaterialName(materialId: number | null): string {
   if (!materialId) return 'Not linked'
   return detail.value?.materials.find((item) => item.id === materialId)?.fileName ?? `#${materialId}`
-}
-
-function goBackToCurricula(): void {
-  void router.push('/mentor/curricula')
 }
 
 async function load(): Promise<void> {
@@ -325,10 +321,14 @@ async function confirmPublish(): Promise<void> {
 
     <p v-if="loading">Loading...</p>
     <template v-else-if="detail">
-      <Button label="Back" class="back-btn" @click="goBackToCurricula" />
-      <header class="header">
-        <div>
-          <h1>{{ detail.curriculum.name }}</h1>
+      <PageHeader
+        :title="detail.curriculum.name"
+        :show-back="true"
+        back-to="/mentor/curricula"
+        :tag-value="detail.curriculum.status"
+        :tag-severity="headerTagSeverity"
+      >
+        <template #description>
           <div class="header-description">
             <p>{{ showFullHeaderDescription ? overviewDescription : headerDescriptionShort }}</p>
             <Button
@@ -339,9 +339,8 @@ async function confirmPublish(): Promise<void> {
               @click="showFullHeaderDescription = !showFullHeaderDescription"
             />
           </div>
-        </div>
-        <Tag :value="detail.curriculum.status" :severity="isPublished ? 'success' : 'warn'" rounded />
-      </header>
+        </template>
+      </PageHeader>
 
       <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
       <Message v-if="isPublished" severity="info" :closable="false">
@@ -581,34 +580,11 @@ async function confirmPublish(): Promise<void> {
   gap: 1rem;
 }
 
-.back-btn {
-  width: fit-content;
-  font-size: 0.9rem;
-  padding: 0.35rem 0.8rem;
-  background: var(--brand-600);
-  border: 1px solid var(--brand-600);
-  color: #fff;
-}
-
-.back-btn:hover {
-  background: var(--brand-700);
-  border-color: var(--brand-700);
-}
-
-.header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.75rem;
-}
-
-.header h1 {
-  margin: 0;
-  font-size: 1.8rem;
-}
-
 .header-description {
-  margin-top: 0.25rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
 }
 
 .header-description p {
