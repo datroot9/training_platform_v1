@@ -36,7 +36,19 @@ const router = createRouter({
       path: '/trainee',
       component: () => import('../views/trainee/TraineeLayout.vue'),
       meta: { requiresAuth: true, role: 'TRAINEE' },
-      children: [{ path: '', name: 'trainee-home', component: () => import('../views/trainee/TraineeHomeView.vue') }],
+      children: [
+        { path: '', name: 'trainee-home', component: () => import('../views/trainee/TraineeHomeView.vue') },
+        {
+          path: 'curriculum',
+          name: 'trainee-curriculum',
+          component: () => import('../views/trainee/TraineeHomeView.vue'),
+        },
+        {
+          path: 'assignment',
+          name: 'trainee-assignment',
+          component: () => import('../views/trainee/TraineeHomeView.vue'),
+        },
+      ],
     },
     {
       path: '/',

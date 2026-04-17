@@ -1,28 +1,35 @@
 <script setup lang="ts">
-import { RouterLink, RouterView } from 'vue-router'
+import { RouterView, useRouter } from 'vue-router'
+import AppSidebar from '../../components/layout/AppSidebar.vue'
 import { useAuthStore } from '../../stores/auth'
 
 const auth = useAuthStore()
+const router = useRouter()
+const primaryLinks = [
+  { label: 'Dashboard', to: '/trainee' },
+  { label: 'Curriculum Roadmap', to: '/trainee/curriculum' },
+  { label: 'My Assignment', to: '/trainee/assignment' },
+]
+const secondaryLinks = [{ label: 'Account Security', to: '/account/change-password' }]
 
 async function signOut(): Promise<void> {
   await auth.logout()
+  await router.replace('/login')
 }
 </script>
 
 <template>
   <div class="layout">
-    <header class="top">
-      <div class="brand">Trainee</div>
-      <nav class="nav">
-        <RouterLink to="/trainee">Assignment</RouterLink>
-        <RouterLink to="/account/change-password">Password</RouterLink>
-      </nav>
-      <div class="user">
-        <span class="muted">{{ auth.user?.email }}</span>
-        <button type="button" @click="signOut">Logout</button>
-      </div>
-    </header>
-    <main class="main">
+    <AppSidebar
+      title="Trainee Space"
+      :primary-links="primaryLinks"
+      :secondary-links="secondaryLinks"
+      :user-email="auth.user?.email"
+      user-role="Trainee"
+      @logout="signOut"
+    />
+
+    <main class="content">
       <RouterView />
     </main>
   </div>
@@ -31,54 +38,18 @@ async function signOut(): Promise<void> {
 <style scoped>
 .layout {
   min-height: 100vh;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 260px 1fr;
   background: #f8fafc;
 }
-.top {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 0.75rem 1.25rem;
-  background: #fff;
-  border-bottom: 1px solid #e2e8f0;
-}
-.brand {
-  font-weight: 700;
-}
-.nav {
-  display: flex;
-  gap: 0.75rem;
-  flex: 1;
-}
-.nav a {
-  color: #2563eb;
-  text-decoration: none;
-}
-.nav a.router-link-active {
-  font-weight: 600;
-  text-decoration: underline;
-}
-.user {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-.muted {
-  color: #64748b;
-  font-size: 0.85rem;
-}
-button {
-  padding: 0.35rem 0.6rem;
-  border-radius: 6px;
-  border: 1px solid #cbd5e1;
-  background: #fff;
-  cursor: pointer;
-}
-.main {
+
+.content {
   padding: 1.25rem;
-  max-width: 900px;
-  width: 100%;
-  margin: 0 auto;
+}
+
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
 }
 </style>
