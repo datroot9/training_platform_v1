@@ -1,9 +1,8 @@
 package com.example.training_platform.curriculum;
 
-import java.util.List;
-
 import com.example.training_platform.auth.AuthenticatedUser;
 import com.example.training_platform.common.dto.ApiResponse;
+import com.example.training_platform.common.dto.PagedResponse;
 import com.example.training_platform.curriculum.dto.CreateCurriculumRequest;
 import com.example.training_platform.curriculum.dto.CreateTaskTemplateRequest;
 import com.example.training_platform.curriculum.dto.CurriculumDetailResponse;
@@ -56,11 +55,31 @@ public class CurriculumController {
     }
 
     @GetMapping
-    @Operation(summary = "List my curricula")
-    public ResponseEntity<ApiResponse<List<CurriculumResponse>>> list(Authentication authentication,
-                                                                      @RequestParam(value = "q", required = false) String query) {
+    @Operation(summary = "List my curricula with server-side filters, pagination, and sorting")
+    public ResponseEntity<ApiResponse<PagedResponse<CurriculumResponse>>> list(
+            Authentication authentication,
+            @Parameter(description = "Free-text search on curriculum name/description")
+            @RequestParam(value = "q", required = false) String query,
+            @Parameter(description = "Filter by curriculum status: DRAFT or PUBLISHED")
+            @RequestParam(value = "status", required = false) String status,
+            @Parameter(description = "Zero-based page index")
+            @RequestParam(value = "page", required = false) Integer page,
+            @Parameter(description = "Page size (max 100)")
+            @RequestParam(value = "size", required = false) Integer size,
+            @Parameter(description = "Sort field: updatedAt, createdAt, name, status, publishedAt")
+            @RequestParam(value = "sortBy", required = false) String sortBy,
+            @Parameter(description = "Sort direction: asc or desc")
+            @RequestParam(value = "sortDir", required = false) String sortDir) {
         AuthenticatedUser current = (AuthenticatedUser) authentication.getPrincipal();
-        List<CurriculumResponse> data = curriculumService.list(current.userId(), query);
+        PagedResponse<CurriculumResponse> data = curriculumService.list(
+                current.userId(),
+                query,
+                status,
+                page,
+                size,
+                sortBy,
+                sortDir
+        );
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Curriculum list fetched", data));
     }
 

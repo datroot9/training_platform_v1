@@ -3,9 +3,12 @@ package com.example.training_platform.curriculum;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 
+import com.example.training_platform.common.dto.PagedResponse;
 import com.example.training_platform.curriculum.dto.CreateCurriculumRequest;
 import com.example.training_platform.curriculum.dto.CreateTaskTemplateRequest;
 import com.example.training_platform.curriculum.dto.CurriculumDetailResponse;
@@ -26,6 +29,9 @@ import org.springframework.web.server.ResponseStatusException;
 public class CurriculumService {
 
     private static final long CLEAR_LEARNING_MATERIAL_SENTINEL = 0L;
+    private static final int DEFAULT_PAGE = 0;
+    private static final int DEFAULT_SIZE = 10;
+    private static final int MAX_SIZE = 100;
 
     private final JdbcTemplate jdbcTemplate;
     private final LocalPdfStorageService pdfStorage;
@@ -50,35 +56,62 @@ public class CurriculumService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to load curriculum"));
     }
 
-    public List<CurriculumResponse> list(Long mentorId, String query) {
-        String keyword = query == null ? null : query.trim();
-        if (keyword == null || keyword.isEmpty()) {
-            return jdbcTemplate.query(
-                    """
-                    select id, name, description, status, published_at, created_at, updated_at
-                    from curricula
-                    where created_by = ?
-                    order by updated_at desc
-                    """,
-                    this::mapCurriculumResponse,
-                    mentorId
-            );
-        }
-        String like = "%" + keyword + "%";
-        return jdbcTemplate.query(
+    public PagedResponse<CurriculumResponse> list(Long mentorId,
+                                                  String query,
+                                                  String status,
+                                                  Integer page,
+                                                  Integer size,
+                                                  String sortBy,
+                                                  String sortDir) {
+        int safePage = normalizePage(page);
+        int safeSize = normalizeSize(size);
+        String safeSortBy = resolveSortColumn(sortBy);
+        String safeSortDir = resolveSortDirection(sortDir);
+        String keyword = normalizeKeyword(query);
+        String normalizedStatus = normalizeStatus(status);
+
+        StringBuilder whereClause = new StringBuilder(
                 """
-                select id, name, description, status, published_at, created_at, updated_at
                 from curricula
                 where created_by = ?
-                  and (lower(name) like lower(concat('%', ?, '%'))
-                    or lower(coalesce(description, '')) like lower(concat('%', ?, '%')))
-                order by updated_at desc
-                """,
-                this::mapCurriculumResponse,
-                mentorId,
-                like,
-                like
+                """
         );
+        List<Object> params = new ArrayList<>();
+        params.add(mentorId);
+
+        if (keyword != null) {
+            whereClause.append(
+                    """
+                      and (lower(name) like lower(concat('%', ?, '%'))
+                        or lower(coalesce(description, '')) like lower(concat('%', ?, '%')))
+                    """
+            );
+            params.add(keyword);
+            params.add(keyword);
+        }
+        if (normalizedStatus != null) {
+            whereClause.append(" and status = ?");
+            params.add(normalizedStatus);
+        }
+
+        Long totalElements = jdbcTemplate.queryForObject(
+                "select count(*) " + whereClause,
+                Long.class,
+                params.toArray()
+        );
+        long safeTotal = totalElements == null ? 0 : totalElements;
+
+        String listSql =
+                """
+                select id, name, description, status, published_at, created_at, updated_at
+                """
+                        + whereClause +
+                        " order by " + safeSortBy + " " + safeSortDir + " limit ? offset ?";
+        List<Object> listParams = new ArrayList<>(params);
+        listParams.add(safeSize);
+        listParams.add((long) safePage * safeSize);
+        List<CurriculumResponse> rows = jdbcTemplate.query(listSql, this::mapCurriculumResponse, listParams.toArray());
+        return PagedResponse.of(rows, safePage, safeSize, safeTotal);
     }
 
     public CurriculumDetailResponse getDetail(Long mentorId, Long curriculumId) {
@@ -489,5 +522,59 @@ public class CurriculumService {
             return name.substring(0, 255);
         }
         return name;
+    }
+
+    private static int normalizePage(Integer page) {
+        if (page == null || page < 0) {
+            return DEFAULT_PAGE;
+        }
+        return page;
+    }
+
+    private static int normalizeSize(Integer size) {
+        if (size == null || size < 1) {
+            return DEFAULT_SIZE;
+        }
+        return Math.min(size, MAX_SIZE);
+    }
+
+    private static String normalizeKeyword(String query) {
+        if (query == null) {
+            return null;
+        }
+        String trimmed = query.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private static String normalizeStatus(String status) {
+        if (status == null || status.isBlank()) {
+            return null;
+        }
+        String normalized = status.trim().toUpperCase(Locale.ROOT);
+        if (!"DRAFT".equals(normalized) && !"PUBLISHED".equals(normalized)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "status must be DRAFT or PUBLISHED");
+        }
+        return normalized;
+    }
+
+    private static String resolveSortColumn(String sortBy) {
+        if (sortBy == null || sortBy.isBlank()) {
+            return "updated_at";
+        }
+        return switch (sortBy.trim()) {
+            case "name" -> "name";
+            case "status" -> "status";
+            case "created_at", "createdAt" -> "created_at";
+            case "published_at", "publishedAt" -> "published_at";
+            case "updated_at", "updatedAt" -> "updated_at";
+            default -> "updated_at";
+        };
+    }
+
+    private static String resolveSortDirection(String sortDir) {
+        if (sortDir == null || sortDir.isBlank()) {
+            return "desc";
+        }
+        return "asc".equals(sortDir.trim().toLowerCase(Locale.ROOT)) ? "asc" : "desc";
     }
 }

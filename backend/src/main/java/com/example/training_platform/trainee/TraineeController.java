@@ -1,15 +1,17 @@
 package com.example.training_platform.trainee;
 
-import java.util.List;
 import java.util.Map;
 
 import com.example.training_platform.auth.AuthenticatedUser;
 import com.example.training_platform.common.dto.ApiResponse;
+import com.example.training_platform.common.dto.PagedResponse;
 import com.example.training_platform.trainee.dto.CreateTraineeRequest;
 import com.example.training_platform.trainee.dto.CreateTraineeResponse;
 import com.example.training_platform.trainee.dto.ResetPasswordResponse;
 import com.example.training_platform.trainee.dto.TraineeResponse;
 import com.example.training_platform.trainee.dto.UpdateTraineeStatusRequest;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -44,10 +46,31 @@ public class TraineeController {
     }
 
     @GetMapping
-    public ResponseEntity<ApiResponse<List<TraineeResponse>>> list(Authentication authentication,
-                                                                   @RequestParam(value = "q", required = false) String query) {
+    @Operation(summary = "List my trainees with server-side filters, pagination, and sorting")
+    public ResponseEntity<ApiResponse<PagedResponse<TraineeResponse>>> list(
+            Authentication authentication,
+            @Parameter(description = "Free-text search on trainee email/fullName")
+            @RequestParam(value = "q", required = false) String query,
+            @Parameter(description = "Filter by active status")
+            @RequestParam(value = "active", required = false) Boolean active,
+            @Parameter(description = "Zero-based page index")
+            @RequestParam(value = "page", required = false) Integer page,
+            @Parameter(description = "Page size (max 100)")
+            @RequestParam(value = "size", required = false) Integer size,
+            @Parameter(description = "Sort field: createdAt, fullName, email")
+            @RequestParam(value = "sortBy", required = false) String sortBy,
+            @Parameter(description = "Sort direction: asc or desc")
+            @RequestParam(value = "sortDir", required = false) String sortDir) {
         AuthenticatedUser current = (AuthenticatedUser) authentication.getPrincipal();
-        List<TraineeResponse> data = traineeService.list(current.userId(), query);
+        PagedResponse<TraineeResponse> data = traineeService.list(
+                current.userId(),
+                query,
+                active,
+                page,
+                size,
+                sortBy,
+                sortDir
+        );
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Trainee list fetched", data));
     }
 

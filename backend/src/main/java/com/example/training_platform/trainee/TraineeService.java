@@ -5,9 +5,12 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 import com.example.training_platform.auth.PasswordHashService;
+import com.example.training_platform.common.dto.PagedResponse;
 import com.example.training_platform.trainee.dto.CreateTraineeRequest;
 import com.example.training_platform.trainee.dto.CreateTraineeResponse;
 import com.example.training_platform.trainee.dto.ResetPasswordResponse;
@@ -22,6 +25,9 @@ import org.springframework.web.server.ResponseStatusException;
 public class TraineeService {
 
     private static final String TEMP_PASSWORD_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%^&*";
+    private static final int DEFAULT_PAGE = 0;
+    private static final int DEFAULT_SIZE = 10;
+    private static final int MAX_SIZE = 100;
 
     private final JdbcTemplate jdbcTemplate;
     private final PasswordHashService passwordHashService;
@@ -60,34 +66,62 @@ public class TraineeService {
         );
     }
 
-    public List<TraineeResponse> list(Long mentorId, String query) {
-        String keyword = query == null ? null : query.trim();
-        if (keyword == null || keyword.isEmpty()) {
-            return jdbcTemplate.query(
-                    """
-                    select id, email, full_name, is_active, mentor_id, created_at
-                    from users
-                    where role = 'TRAINEE' and mentor_id = ?
-                    order by created_at desc
-                    """,
-                    this::mapTrainee,
-                    mentorId
-            );
-        }
-        return jdbcTemplate.query(
+    public PagedResponse<TraineeResponse> list(Long mentorId,
+                                               String query,
+                                               Boolean active,
+                                               Integer page,
+                                               Integer size,
+                                               String sortBy,
+                                               String sortDir) {
+        int safePage = normalizePage(page);
+        int safeSize = normalizeSize(size);
+        String safeSortBy = resolveSortColumn(sortBy);
+        String safeSortDir = resolveSortDirection(sortDir);
+        String keyword = normalizeKeyword(query);
+
+        StringBuilder whereClause = new StringBuilder(
                 """
-                select id, email, full_name, is_active, mentor_id, created_at
                 from users
                 where role = 'TRAINEE' and mentor_id = ?
-                  and (lower(email) like lower(concat('%', ?, '%'))
-                    or lower(full_name) like lower(concat('%', ?, '%')))
-                order by created_at desc
-                """,
-                this::mapTrainee,
-                mentorId,
-                keyword,
-                keyword
+                """
         );
+        List<Object> params = new ArrayList<>();
+        params.add(mentorId);
+
+        if (keyword != null) {
+            whereClause.append(
+                    """
+                      and (lower(email) like lower(concat('%', ?, '%'))
+                        or lower(full_name) like lower(concat('%', ?, '%')))
+                    """
+            );
+            params.add(keyword);
+            params.add(keyword);
+        }
+        if (active != null) {
+            whereClause.append(" and is_active = ?");
+            params.add(active);
+        }
+
+        Long totalElements = jdbcTemplate.queryForObject(
+                "select count(*) " + whereClause,
+                Long.class,
+                params.toArray()
+        );
+        long safeTotal = totalElements == null ? 0 : totalElements;
+
+        String listSql =
+                """
+                select id, email, full_name, is_active, mentor_id, created_at
+                """
+                        + whereClause +
+                        " order by " + safeSortBy + " " + safeSortDir + " limit ? offset ?";
+
+        List<Object> listParams = new ArrayList<>(params);
+        listParams.add(safeSize);
+        listParams.add((long) safePage * safeSize);
+        List<TraineeResponse> rows = jdbcTemplate.query(listSql, this::mapTrainee, listParams.toArray());
+        return PagedResponse.of(rows, safePage, safeSize, safeTotal);
     }
 
     public void setActive(Long mentorId, Long traineeId, boolean active) {
@@ -155,5 +189,46 @@ public class TraineeService {
     }
 
     private record UserBasicProjection(Long id, String email) {
+    }
+
+    private static int normalizePage(Integer page) {
+        if (page == null || page < 0) {
+            return DEFAULT_PAGE;
+        }
+        return page;
+    }
+
+    private static int normalizeSize(Integer size) {
+        if (size == null || size < 1) {
+            return DEFAULT_SIZE;
+        }
+        return Math.min(size, MAX_SIZE);
+    }
+
+    private static String normalizeKeyword(String query) {
+        if (query == null) {
+            return null;
+        }
+        String trimmed = query.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private static String resolveSortColumn(String sortBy) {
+        if (sortBy == null || sortBy.isBlank()) {
+            return "created_at";
+        }
+        return switch (sortBy.trim()) {
+            case "email" -> "email";
+            case "full_name", "fullName" -> "full_name";
+            case "created_at", "createdAt" -> "created_at";
+            default -> "created_at";
+        };
+    }
+
+    private static String resolveSortDirection(String sortDir) {
+        if (sortDir == null || sortDir.isBlank()) {
+            return "desc";
+        }
+        return "asc".equals(sortDir.trim().toLowerCase(Locale.ROOT)) ? "asc" : "desc";
     }
 }
