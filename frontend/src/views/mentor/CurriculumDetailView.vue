@@ -1,12 +1,33 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
+import Button from 'primevue/button'
+import Column from 'primevue/column'
+import DataTable from 'primevue/datatable'
+import Dialog from 'primevue/dialog'
+import InputNumber from 'primevue/inputnumber'
+import InputText from 'primevue/inputtext'
+import Message from 'primevue/message'
+import Select from 'primevue/select'
+import Tab from 'primevue/tab'
+import TabList from 'primevue/tablist'
+import TabPanel from 'primevue/tabpanel'
+import TabPanels from 'primevue/tabpanels'
+import Tabs from 'primevue/tabs'
+import Tag from 'primevue/tag'
+import Textarea from 'primevue/textarea'
+import Toast from 'primevue/toast'
+import { useToast } from 'primevue/usetoast'
 import { ApiError } from '../../api/client'
 import * as mentorApi from '../../api/modules/mentor'
-import type { CurriculumDetailResponse } from '../../api/types'
+import type { CurriculumDetailResponse, LearningMaterialResponse, TaskTemplateResponse } from '../../api/types'
 
 const route = useRoute()
+const router = useRouter()
+const toast = useToast()
 const curriculumId = computed(() => Number(route.params.id))
+const activeTab = ref('overview')
+const showFullHeaderDescription = ref(false)
 
 const detail = ref<CurriculumDetailResponse | null>(null)
 const loading = ref(false)
@@ -14,19 +35,81 @@ const error = ref('')
 
 const editName = ref('')
 const editDescription = ref('')
+const savingMeta = ref(false)
 
-const tmplTitle = ref('')
-const tmplDescription = ref('')
-const tmplMaterialId = ref<number | null>(null)
+const uploadFile = ref<File | null>(null)
+const uploadSortOrder = ref<number | null>(null)
+const uploading = ref(false)
+const materialDeleteDialogVisible = ref(false)
+const materialToDelete = ref<LearningMaterialResponse | null>(null)
+
+const templateDialogVisible = ref(false)
+const templateDeleteDialogVisible = ref(false)
+const templateMode = ref<'create' | 'edit'>('create')
+const templateEditing = ref<TaskTemplateResponse | null>(null)
+const templateToDelete = ref<TaskTemplateResponse | null>(null)
+const templateTitle = ref('')
+const templateDescription = ref('')
+const templateSortOrder = ref<number | null>(null)
+const templateMaterialId = ref<number | null>(null)
+const templateSubmitting = ref(false)
+
+const publishDialogVisible = ref(false)
+const publishSubmitting = ref(false)
+
+const isPublished = computed(() => detail.value?.curriculum.status === 'PUBLISHED')
+const hasMaterials = computed(() => (detail.value?.materials.length ?? 0) > 0)
+const hasTemplates = computed(() => (detail.value?.taskTemplates.length ?? 0) > 0)
+const publishReady = computed(() => hasMaterials.value && hasTemplates.value)
+
+const materialOptions = computed(() =>
+  (detail.value?.materials ?? []).map((item) => ({
+    label: item.fileName,
+    value: item.id,
+  })),
+)
+
+const overviewDescription = computed(() => {
+  const normalized = (detail.value?.curriculum.description ?? '').replace(/\.{3,}/g, '').trim()
+  return normalized || 'No description yet.'
+})
+
+const headerDescriptionShort = computed(() => {
+  if (overviewDescription.value.length <= 160) return overviewDescription.value
+  return `${overviewDescription.value.slice(0, 160).trimEnd()}`
+})
+const canExpandHeaderDescription = computed(() => overviewDescription.value.length > 160)
+
+function formatDate(value?: string | null): string {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '-'
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date)
+}
+
+function mapMaterialName(materialId: number | null): string {
+  if (!materialId) return 'Not linked'
+  return detail.value?.materials.find((item) => item.id === materialId)?.fileName ?? `#${materialId}`
+}
+
+function goBackToCurricula(): void {
+  void router.push('/mentor/curricula')
+}
 
 async function load(): Promise<void> {
   error.value = ''
   loading.value = true
   try {
-    const d = await mentorApi.getCurriculum(curriculumId.value)
-    detail.value = d
-    editName.value = d.curriculum.name
-    editDescription.value = d.curriculum.description ?? ''
+    const payload = await mentorApi.getCurriculum(curriculumId.value)
+    detail.value = payload
+    editName.value = payload.curriculum.name
+    editDescription.value = payload.curriculum.description ?? ''
   } catch (e) {
     error.value = e instanceof ApiError ? e.message : 'Failed to load curriculum'
     detail.value = null
@@ -40,210 +123,588 @@ onMounted(() => {
 })
 
 watch(curriculumId, () => {
+  activeTab.value = 'overview'
+  showFullHeaderDescription.value = false
   void load()
 })
 
-async function saveMeta(): Promise<void> {
+async function saveOverview(): Promise<void> {
+  if (!detail.value || isPublished.value) return
   error.value = ''
+  savingMeta.value = true
   try {
     await mentorApi.updateCurriculum(curriculumId.value, {
-      name: editName.value,
-      description: editDescription.value,
+      name: editName.value.trim(),
+      description: editDescription.value.trim(),
+    })
+    toast.add({
+      severity: 'success',
+      summary: 'Overview updated',
+      detail: 'Curriculum metadata was saved.',
+      life: 2500,
     })
     await load()
   } catch (e) {
     error.value = e instanceof ApiError ? e.message : 'Update failed'
+  } finally {
+    savingMeta.value = false
   }
 }
 
-const uploadFile = ref<File | null>(null)
-
-function onFileChange(ev: Event): void {
-  const input = ev.target as HTMLInputElement
+function onFileChange(event: Event): void {
+  const input = event.target as HTMLInputElement
   uploadFile.value = input.files?.[0] ?? null
 }
 
-async function upload(): Promise<void> {
-  if (!uploadFile.value) return
+async function uploadMaterial(): Promise<void> {
+  if (!uploadFile.value || isPublished.value) return
   error.value = ''
+  uploading.value = true
   try {
-    await mentorApi.uploadMaterial(curriculumId.value, uploadFile.value)
+    await mentorApi.uploadMaterial(curriculumId.value, uploadFile.value, uploadSortOrder.value ?? undefined)
     uploadFile.value = null
+    uploadSortOrder.value = null
+    toast.add({
+      severity: 'success',
+      summary: 'Material uploaded',
+      detail: 'PDF is now available in this curriculum.',
+      life: 2500,
+    })
     await load()
   } catch (e) {
     error.value = e instanceof ApiError ? e.message : 'Upload failed'
+  } finally {
+    uploading.value = false
   }
 }
 
-async function removeMaterial(materialId: number): Promise<void> {
-  if (!window.confirm('Delete this material?')) return
+function askDeleteMaterial(item: LearningMaterialResponse): void {
+  materialToDelete.value = item
+  materialDeleteDialogVisible.value = true
+}
+
+async function confirmDeleteMaterial(): Promise<void> {
+  if (!materialToDelete.value || isPublished.value) return
   error.value = ''
   try {
-    await mentorApi.deleteMaterial(curriculumId.value, materialId)
+    await mentorApi.deleteMaterial(curriculumId.value, materialToDelete.value.id)
+    materialDeleteDialogVisible.value = false
+    toast.add({
+      severity: 'success',
+      summary: 'Material deleted',
+      detail: `${materialToDelete.value.fileName} was removed.`,
+      life: 2500,
+    })
+    materialToDelete.value = null
     await load()
   } catch (e) {
     error.value = e instanceof ApiError ? e.message : 'Delete failed'
   }
 }
 
-async function addTemplate(): Promise<void> {
+function resetTemplateForm(): void {
+  templateTitle.value = ''
+  templateDescription.value = ''
+  templateSortOrder.value = null
+  templateMaterialId.value = null
+  templateEditing.value = null
+}
+
+function openCreateTemplate(): void {
+  templateMode.value = 'create'
+  resetTemplateForm()
+  templateDialogVisible.value = true
+}
+
+function openEditTemplate(item: TaskTemplateResponse): void {
+  templateMode.value = 'edit'
+  templateEditing.value = item
+  templateTitle.value = item.title
+  templateDescription.value = item.description ?? ''
+  templateSortOrder.value = item.sortOrder
+  templateMaterialId.value = item.learningMaterialId
+  templateDialogVisible.value = true
+}
+
+async function submitTemplate(): Promise<void> {
+  if (!templateTitle.value.trim() || isPublished.value) return
   error.value = ''
+  templateSubmitting.value = true
   try {
-    await mentorApi.createTaskTemplate(curriculumId.value, {
-      title: tmplTitle.value,
-      description: tmplDescription.value || undefined,
-      learningMaterialId: tmplMaterialId.value ?? undefined,
-    })
-    tmplTitle.value = ''
-    tmplDescription.value = ''
-    tmplMaterialId.value = null
+    if (templateMode.value === 'create') {
+      await mentorApi.createTaskTemplate(curriculumId.value, {
+        title: templateTitle.value.trim(),
+        description: templateDescription.value.trim() || undefined,
+        sortOrder: templateSortOrder.value ?? undefined,
+        learningMaterialId: templateMaterialId.value ?? undefined,
+      })
+      toast.add({
+        severity: 'success',
+        summary: 'Template created',
+        detail: 'New task template has been added.',
+        life: 2500,
+      })
+    } else if (templateEditing.value) {
+      await mentorApi.updateTaskTemplate(curriculumId.value, templateEditing.value.id, {
+        title: templateTitle.value.trim(),
+        description: templateDescription.value.trim() || undefined,
+        sortOrder: templateSortOrder.value ?? undefined,
+        learningMaterialId: templateMaterialId.value,
+      })
+      toast.add({
+        severity: 'success',
+        summary: 'Template updated',
+        detail: 'Task template changes were saved.',
+        life: 2500,
+      })
+    }
+    templateDialogVisible.value = false
+    resetTemplateForm()
     await load()
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : 'Create template failed'
+    error.value = e instanceof ApiError ? e.message : 'Template save failed'
+  } finally {
+    templateSubmitting.value = false
   }
 }
 
-async function publish(): Promise<void> {
+function askDeleteTemplate(item: TaskTemplateResponse): void {
+  templateToDelete.value = item
+  templateDeleteDialogVisible.value = true
+}
+
+async function confirmDeleteTemplate(): Promise<void> {
+  if (!templateToDelete.value || isPublished.value) return
   error.value = ''
   try {
+    await mentorApi.deleteTaskTemplate(curriculumId.value, templateToDelete.value.id)
+    templateDeleteDialogVisible.value = false
+    toast.add({
+      severity: 'success',
+      summary: 'Template deleted',
+      detail: `${templateToDelete.value.title} was removed.`,
+      life: 2500,
+    })
+    templateToDelete.value = null
+    await load()
+  } catch (e) {
+    error.value = e instanceof ApiError ? e.message : 'Delete template failed'
+  }
+}
+
+function askPublish(): void {
+  if (!publishReady.value || isPublished.value) return
+  publishDialogVisible.value = true
+}
+
+async function confirmPublish(): Promise<void> {
+  if (!publishReady.value || isPublished.value) return
+  error.value = ''
+  publishSubmitting.value = true
+  try {
     await mentorApi.publishCurriculum(curriculumId.value)
+    publishDialogVisible.value = false
+    toast.add({
+      severity: 'success',
+      summary: 'Curriculum published',
+      detail: 'Editing is now locked for this curriculum.',
+      life: 3000,
+    })
     await load()
   } catch (e) {
     error.value = e instanceof ApiError ? e.message : 'Publish failed'
+  } finally {
+    publishSubmitting.value = false
   }
 }
 </script>
 
 <template>
-  <div>
-    <p v-if="loading">Loading…</p>
-    <p v-else-if="error" class="error">{{ error }}</p>
+  <div class="curriculum-detail-page">
+    <Toast position="bottom-right" />
+
+    <p v-if="loading">Loading...</p>
     <template v-else-if="detail">
-      <header class="head">
-        <h1>{{ detail.curriculum.name }}</h1>
-        <span class="pill">{{ detail.curriculum.status }}</span>
+      <Button label="Back" class="back-btn" @click="goBackToCurricula" />
+      <header class="header">
+        <div>
+          <h1>{{ detail.curriculum.name }}</h1>
+          <div class="header-description">
+            <p>{{ showFullHeaderDescription ? overviewDescription : headerDescriptionShort }}</p>
+            <Button
+              v-if="canExpandHeaderDescription"
+              :label="showFullHeaderDescription ? 'Show less' : 'Show more'"
+              text
+              size="small"
+              @click="showFullHeaderDescription = !showFullHeaderDescription"
+            />
+          </div>
+        </div>
+        <Tag :value="detail.curriculum.status" :severity="isPublished ? 'success' : 'warn'" rounded />
       </header>
 
-      <section class="card">
-        <h2>Details</h2>
-        <label>
-          Name
-          <input v-model="editName" />
-        </label>
-        <label>
-          Description
-          <textarea v-model="editDescription" rows="3" />
-        </label>
-        <button type="button" @click="saveMeta">Save</button>
-        <button
-          v-if="detail.curriculum.status === 'DRAFT'"
-          type="button"
-          class="primary"
-          @click="publish"
-        >
-          Publish
-        </button>
-      </section>
+      <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
+      <Message v-if="isPublished" severity="info" :closable="false">
+        This curriculum is already published. Editing actions are locked.
+      </Message>
 
-      <section class="card">
-        <h2>Materials (PDF)</h2>
-        <div class="row">
-          <input type="file" accept="application/pdf" @change="onFileChange" />
-          <button type="button" :disabled="!uploadFile" @click="upload">Upload</button>
-        </div>
-        <ul>
-          <li v-for="m in detail.materials" :key="m.id">
-            #{{ m.id }} {{ m.fileName }}
-            <button type="button" @click="removeMaterial(m.id)">Delete</button>
-          </li>
-        </ul>
-      </section>
+      <Tabs v-model:value="activeTab">
+        <TabList>
+          <Tab value="overview">Overview</Tab>
+          <Tab value="materials">Materials</Tab>
+          <Tab value="templates">Task templates</Tab>
+          <Tab value="publish">Publish</Tab>
+        </TabList>
+        <TabPanels>
+          <TabPanel value="overview">
+            <section class="card">
+            <div class="form-grid">
+              <label>
+                Name
+                <InputText v-model="editName" :disabled="isPublished" />
+              </label>
+              <label class="full">
+                Description
+                <Textarea v-model="editDescription" rows="4" auto-resize :disabled="isPublished" />
+              </label>
+            </div>
+            <div class="actions">
+              <Button
+                label="Save overview"
+                icon="pi pi-save"
+                :loading="savingMeta"
+                :disabled="isPublished || !editName.trim()"
+                @click="saveOverview"
+              />
+            </div>
+            </section>
+          </TabPanel>
 
-      <section class="card">
-        <h2>Task templates</h2>
-        <div class="row">
-          <label>
-            Title
-            <input v-model="tmplTitle" />
-          </label>
-          <label>
-            Description
-            <input v-model="tmplDescription" />
-          </label>
-          <label>
-            Material ID (optional)
-            <input v-model.number="tmplMaterialId" type="number" />
-          </label>
-          <button type="button" @click="addTemplate">Add</button>
-        </div>
-        <ul>
-          <li v-for="t in detail.taskTemplates" :key="t.id">
-            #{{ t.id }} {{ t.title }}
-          </li>
-        </ul>
-      </section>
+          <TabPanel value="materials">
+            <section class="card">
+            <div class="upload-row">
+              <label>
+                PDF file
+                <input type="file" accept="application/pdf" :disabled="isPublished" @change="onFileChange" />
+              </label>
+              <label>
+                Sort order (optional)
+                <InputNumber v-model="uploadSortOrder" :min="0" :use-grouping="false" :disabled="isPublished" />
+              </label>
+              <Button
+                label="Upload material"
+                icon="pi pi-upload"
+                :loading="uploading"
+                :disabled="!uploadFile || isPublished"
+                @click="uploadMaterial"
+              />
+            </div>
+
+            <DataTable :value="detail.materials" data-key="id" responsive-layout="scroll" class="p-datatable-sm">
+              <Column field="fileName" header="File name" style="min-width: 18rem" />
+              <Column field="sortOrder" header="Sort order" style="width: 8rem" />
+              <Column header="Uploaded" style="width: 12rem">
+                <template #body="{ data }">
+                  {{ formatDate(data.createdAt) }}
+                </template>
+              </Column>
+              <Column header-style="width: 6rem">
+                <template #body="{ data }">
+                  <Button
+                    icon="pi pi-trash"
+                    text
+                    severity="danger"
+                    :disabled="isPublished"
+                    @click="askDeleteMaterial(data)"
+                  />
+                </template>
+              </Column>
+            </DataTable>
+            </section>
+          </TabPanel>
+
+          <TabPanel value="templates">
+            <section class="card">
+            <div class="toolbar-end">
+              <Button
+                label="Add template"
+                icon="pi pi-plus"
+                :disabled="isPublished"
+                @click="openCreateTemplate"
+              />
+            </div>
+
+            <DataTable :value="detail.taskTemplates" data-key="id" responsive-layout="scroll" class="p-datatable-sm">
+              <Column field="title" header="Title" style="min-width: 14rem" />
+              <Column field="sortOrder" header="Sort order" style="width: 8rem" />
+              <Column header="Material link" style="min-width: 12rem">
+                <template #body="{ data }">
+                  {{ mapMaterialName(data.learningMaterialId) }}
+                </template>
+              </Column>
+              <Column header-style="width: 8rem">
+                <template #body="{ data }">
+                  <div class="row-actions">
+                    <Button icon="pi pi-pencil" text :disabled="isPublished" @click="openEditTemplate(data)" />
+                    <Button
+                      icon="pi pi-trash"
+                      text
+                      severity="danger"
+                      :disabled="isPublished"
+                      @click="askDeleteTemplate(data)"
+                    />
+                  </div>
+                </template>
+              </Column>
+            </DataTable>
+            </section>
+          </TabPanel>
+
+          <TabPanel value="publish">
+            <section class="card">
+            <h3>Publish checklist</h3>
+            <ul class="checklist">
+              <li>
+                <i class="pi" :class="hasMaterials ? 'pi-check-circle ok' : 'pi-times-circle bad'" />
+                At least one learning material uploaded
+              </li>
+              <li>
+                <i class="pi" :class="hasTemplates ? 'pi-check-circle ok' : 'pi-times-circle bad'" />
+                At least one task template created
+              </li>
+            </ul>
+            <div class="actions">
+              <Button
+                label="Publish curriculum"
+                icon="pi pi-send"
+                severity="success"
+                :disabled="isPublished || !publishReady"
+                @click="askPublish"
+              />
+            </div>
+            </section>
+          </TabPanel>
+        </TabPanels>
+      </Tabs>
     </template>
   </div>
+
+  <Dialog
+    v-model:visible="materialDeleteDialogVisible"
+    modal
+    header="Delete material"
+    :style="{ width: '28rem' }"
+  >
+    <p>Delete <strong>{{ materialToDelete?.fileName }}</strong> from this curriculum?</p>
+    <template #footer>
+      <Button label="Cancel" text @click="materialDeleteDialogVisible = false" />
+      <Button label="Delete" severity="danger" @click="confirmDeleteMaterial" />
+    </template>
+  </Dialog>
+
+  <Dialog
+    v-model:visible="templateDialogVisible"
+    modal
+    :header="templateMode === 'create' ? 'Add task template' : 'Edit task template'"
+    :style="{ width: '34rem' }"
+  >
+    <div class="dialog-form">
+      <label>
+        Title
+        <InputText v-model="templateTitle" />
+      </label>
+      <label>
+        Description
+        <Textarea v-model="templateDescription" rows="3" auto-resize />
+      </label>
+      <label>
+        Sort order (optional)
+        <InputNumber v-model="templateSortOrder" :min="0" :use-grouping="false" />
+      </label>
+      <label>
+        Linked material (optional)
+        <Select
+          v-model="templateMaterialId"
+          :options="materialOptions"
+          option-label="label"
+          option-value="value"
+          show-clear
+          placeholder="Select learning material"
+        />
+      </label>
+    </div>
+    <template #footer>
+      <Button label="Cancel" text @click="templateDialogVisible = false" />
+      <Button
+        :label="templateMode === 'create' ? 'Create' : 'Save changes'"
+        :loading="templateSubmitting"
+        :disabled="!templateTitle.trim()"
+        @click="submitTemplate"
+      />
+    </template>
+  </Dialog>
+
+  <Dialog
+    v-model:visible="templateDeleteDialogVisible"
+    modal
+    header="Delete template"
+    :style="{ width: '28rem' }"
+  >
+    <p>Delete <strong>{{ templateToDelete?.title }}</strong> from this curriculum?</p>
+    <template #footer>
+      <Button label="Cancel" text @click="templateDeleteDialogVisible = false" />
+      <Button label="Delete" severity="danger" @click="confirmDeleteTemplate" />
+    </template>
+  </Dialog>
+
+  <Dialog v-model:visible="publishDialogVisible" modal header="Publish curriculum" :style="{ width: '30rem' }">
+    <p>
+      Publish this curriculum now? After publishing, materials and templates are locked for editing.
+    </p>
+    <template #footer>
+      <Button label="Cancel" text @click="publishDialogVisible = false" />
+      <Button
+        label="Publish"
+        severity="success"
+        :loading="publishSubmitting"
+        :disabled="!publishReady"
+        @click="confirmPublish"
+      />
+    </template>
+  </Dialog>
 </template>
 
 <style scoped>
-.head {
+.curriculum-detail-page {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.back-btn {
+  width: fit-content;
+  font-size: 0.9rem;
+  padding: 0.35rem 0.8rem;
+  background: var(--brand-600);
+  border: 1px solid var(--brand-600);
+  color: #fff;
+}
+
+.back-btn:hover {
+  background: var(--brand-700);
+  border-color: var(--brand-700);
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: 0.75rem;
-  margin-bottom: 1rem;
 }
-.pill {
-  font-size: 0.75rem;
-  padding: 0.1rem 0.45rem;
-  border-radius: 999px;
-  background: #e2e8f0;
+
+.header h1 {
+  margin: 0;
+  font-size: 1.8rem;
 }
+
+.header-description {
+  margin-top: 0.25rem;
+}
+
+.header-description p {
+  margin: 0;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
 .card {
   background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
+  border: 1px solid var(--brand-border-soft);
+  border-radius: 12px;
   padding: 1rem;
-  margin-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.form-grid label,
+.upload-row label,
+.dialog-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+}
+
+.form-grid .full {
+  grid-column: 1 / -1;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.upload-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+  align-items: flex-end;
+}
+
+.toolbar-end {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.row-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.checklist {
+  list-style: none;
+  padding: 0;
+  margin: 0;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
 }
-label {
+
+.checklist li {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.ok {
+  color: #16a34a;
+}
+
+.bad {
+  color: #dc2626;
+}
+
+.dialog-form {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
-  font-size: 0.9rem;
+  gap: 0.7rem;
 }
-input,
-textarea {
-  padding: 0.45rem 0.5rem;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
-}
-button {
-  align-self: flex-start;
-  padding: 0.45rem 0.65rem;
-  border-radius: 6px;
-  border: 1px solid #cbd5e1;
-  background: #fff;
-  cursor: pointer;
-}
-button.primary {
-  background: #2563eb;
-  color: #fff;
-  border-color: #2563eb;
-}
-.row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  align-items: flex-end;
-}
-.error {
-  color: #b91c1c;
-}
-ul {
-  padding-left: 1.2rem;
+
+@media (max-width: 900px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .actions,
+  .toolbar-end {
+    justify-content: flex-start;
+  }
 }
 </style>

@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { RouterLink } from 'vue-router'
+import { RouterLink, useRoute } from 'vue-router'
 import SidebarIcon from './SidebarIcon.vue'
 
 type SidebarLink = {
   label: string
   to: string
   icon: string
+  activePrefixes?: string[]
 }
 
 const props = defineProps<{
@@ -19,9 +20,15 @@ const props = defineProps<{
 const emit = defineEmits<{
   logout: []
 }>()
+const route = useRoute()
 
 function onLogout(): void {
   emit('logout')
+}
+
+function isActive(link: SidebarLink): boolean {
+  if (route.path === link.to) return true
+  return (link.activePrefixes ?? []).some((prefix) => route.path.startsWith(prefix))
 }
 </script>
 
@@ -30,7 +37,12 @@ function onLogout(): void {
     <div>
       <p class="brand">{{ props.title }}</p>
       <nav class="nav">
-        <RouterLink v-for="link in props.primaryLinks" :key="link.to" :to="link.to">
+        <RouterLink
+          v-for="link in props.primaryLinks"
+          :key="link.to"
+          :to="link.to"
+          :class="{ 'is-active': isActive(link) }"
+        >
           <span class="link-content">
             <SidebarIcon :name="link.icon" />
             <span>{{ link.label }}</span>
@@ -41,7 +53,12 @@ function onLogout(): void {
 
     <div>
       <nav class="nav secondary">
-        <RouterLink v-for="link in props.secondaryLinks" :key="link.to" :to="link.to">
+        <RouterLink
+          v-for="link in props.secondaryLinks"
+          :key="link.to"
+          :to="link.to"
+          :class="{ 'is-active': isActive(link) }"
+        >
           <span class="link-content">
             <SidebarIcon :name="link.icon" />
             <span>{{ link.label }}</span>
@@ -100,7 +117,7 @@ function onLogout(): void {
   cursor: pointer;
 }
 
-.nav a.router-link-exact-active {
+.nav a.is-active {
   background: var(--brand-50);
   color: var(--brand-600);
   font-weight: 600;
