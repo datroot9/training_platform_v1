@@ -101,8 +101,8 @@ function onLogout(): void {
 }
 
 .nav a.router-link-exact-active {
-  background: #e0f2fe;
-  color: #0284c7;
+  background: var(--brand-50);
+  color: var(--brand-600);
   font-weight: 600;
 }
 
@@ -139,7 +139,7 @@ function onLogout(): void {
 .user-role {
   margin: 0.25rem 0 0;
   font-size: 0.78rem;
-  color: #64748b;
+  color: var(--text-muted);
 }
 
 @media (max-width: 900px) {

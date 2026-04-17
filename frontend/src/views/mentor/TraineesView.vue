@@ -242,7 +242,7 @@ function onPageChange(event: { first: number; rows: number }): void {
             @click="showFilterComingSoon"
           />
           <Button icon="pi pi-users" label="Bulk actions" severity="secondary" outlined @click="showBulkComingSoon" />
-          <Button icon="pi pi-plus" label="Add user" @click="createDialogVisible = true" />
+          <Button icon="pi pi-plus" label="Add trainee" @click="createDialogVisible = true" />
         </div>
       </div>
 
@@ -367,12 +367,12 @@ function onPageChange(event: { first: number; rows: number }): void {
 
 .header p {
   margin: 0.3rem 0 0;
-  color: #64748b;
+  color: var(--text-muted);
 }
 
 .table-shell {
   background: #fff;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--brand-border-soft);
   border-radius: 12px;
   padding: 1rem;
 }
@@ -392,7 +392,7 @@ function onPageChange(event: { first: number; rows: number }): void {
 }
 
 .table-top h2 span {
-  color: #64748b;
+  color: var(--text-muted);
 }
 
 .toolbar {
@@ -421,7 +421,7 @@ function onPageChange(event: { first: number; rows: number }): void {
 
 .email {
   margin: 0;
-  color: #64748b;
+  color: var(--text-muted);
   font-size: 0.86rem;
 }
 
@@ -446,7 +446,7 @@ function onPageChange(event: { first: number; rows: number }): void {
 
 .muted {
   margin: 0;
-  color: #64748b;
+  color: var(--text-muted);
 }
 
 @media (max-width: 900px) {
