@@ -6,11 +6,11 @@ import { useAuthStore } from '../../stores/auth'
 const auth = useAuthStore()
 const router = useRouter()
 const primaryLinks = [
-  { label: 'Home', to: '/mentor' },
-  { label: 'Trainees', to: '/mentor/trainees' },
-  { label: 'Curricula', to: '/mentor/curricula' },
+  { label: 'Dashboard ', to: '/mentor', icon: 'dashboard' },
+  { label: 'Trainees', to: '/mentor/trainees', icon: 'users' },
+  { label: 'Curricula', to: '/mentor/curricula', icon: 'curriculum' },
 ]
-const secondaryLinks = [{ label: 'Account Security', to: '/account/change-password' }]
+const secondaryLinks = [{ label: 'Account Security', to: '/account/change-password', icon: 'security' }]
 
 async function signOut(): Promise<void> {
   await auth.logout()

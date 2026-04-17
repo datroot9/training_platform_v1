@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { RouterLink } from 'vue-router'
+import SidebarIcon from './SidebarIcon.vue'
 
 type SidebarLink = {
   label: string
   to: string
+  icon: string
 }
 
 const props = defineProps<{
@@ -29,7 +31,10 @@ function onLogout(): void {
       <p class="brand">{{ props.title }}</p>
       <nav class="nav">
         <RouterLink v-for="link in props.primaryLinks" :key="link.to" :to="link.to">
-          {{ link.label }}
+          <span class="link-content">
+            <SidebarIcon :name="link.icon" />
+            <span>{{ link.label }}</span>
+          </span>
         </RouterLink>
       </nav>
     </div>
@@ -37,9 +42,17 @@ function onLogout(): void {
     <div>
       <nav class="nav secondary">
         <RouterLink v-for="link in props.secondaryLinks" :key="link.to" :to="link.to">
-          {{ link.label }}
+          <span class="link-content">
+            <SidebarIcon :name="link.icon" />
+            <span>{{ link.label }}</span>
+          </span>
         </RouterLink>
-        <button type="button" class="logout-btn" @click="onLogout">Logout</button>
+        <button type="button" class="logout-btn" @click="onLogout">
+          <span class="link-content">
+            <SidebarIcon name="logout" />
+            <span>Logout</span>
+          </span>
+        </button>
       </nav>
 
       <div class="user-card">
@@ -87,10 +100,16 @@ function onLogout(): void {
   cursor: pointer;
 }
 
-.nav a.router-link-active {
+.nav a.router-link-exact-active {
   background: #e0f2fe;
   color: #0284c7;
   font-weight: 600;
+}
+
+.link-content {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
 }
 
 .nav a:hover,
