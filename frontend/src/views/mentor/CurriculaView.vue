@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import Button from 'primevue/button'
 import Column from 'primevue/column'
@@ -9,6 +9,7 @@ import IconField from 'primevue/iconfield'
 import InputIcon from 'primevue/inputicon'
 import InputText from 'primevue/inputtext'
 import Message from 'primevue/message'
+import Paginator from 'primevue/paginator'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import Textarea from 'primevue/textarea'
@@ -25,10 +26,13 @@ const router = useRouter()
 const toast = useToast()
 
 const rows = ref<CurriculumResponse[]>([])
+const totalRecords = ref(0)
 const loading = ref(false)
 const error = ref('')
 const query = ref('')
 const statusFilter = ref<StatusFilter>('ALL')
+const first = ref(0)
+const pageRows = ref(8)
 
 const createDialogVisible = ref(false)
 const createName = ref('')
@@ -42,18 +46,7 @@ const statusOptions: Array<{ label: string; value: StatusFilter }> = [
   { label: 'Published', value: 'PUBLISHED' },
 ]
 
-const filteredRows = computed(() => {
-  const q = query.value.trim().toLowerCase()
-  return rows.value.filter((item) => {
-    const matchStatus = statusFilter.value === 'ALL' || item.status === statusFilter.value
-    const matchQuery =
-      !q ||
-      item.name.toLowerCase().includes(q) ||
-      (item.description ?? '').toLowerCase().includes(q) ||
-      item.status.toLowerCase().includes(q)
-    return matchStatus && matchQuery
-  })
-})
+const summaryCount = computed(() => totalRecords.value)
 
 function formatDate(value?: string | null): string {
   if (!value) return '-'
@@ -72,7 +65,26 @@ async function load(): Promise<void> {
   error.value = ''
   loading.value = true
   try {
-    rows.value = await mentorApi.listCurricula()
+    const page = Math.floor(first.value / pageRows.value)
+    const res = await mentorApi.listCurricula({
+      q: query.value,
+      status: statusFilter.value === 'ALL' ? undefined : statusFilter.value,
+      page,
+      size: pageRows.value,
+      sortBy: 'updatedAt',
+      sortDir: 'desc',
+    })
+    rows.value = res.items
+    totalRecords.value = res.totalElements
+
+    // If filters reduce total while user is on a later page, move back to the last valid page.
+    if (res.items.length === 0 && res.totalElements > 0 && first.value >= res.totalElements) {
+      const lastFirst = Math.max(0, (Math.ceil(res.totalElements / pageRows.value) - 1) * pageRows.value)
+      if (lastFirst !== first.value) {
+        first.value = lastFirst
+        await load()
+      }
+    }
   } catch (e) {
     error.value = e instanceof ApiError ? e.message : 'Failed to load curricula'
   } finally {
@@ -83,6 +95,30 @@ async function load(): Promise<void> {
 onMounted(() => {
   void load()
 })
+
+watch(statusFilter, () => {
+  first.value = 0
+  void load()
+})
+
+watch(query, () => {
+  if (!query.value.trim()) {
+    first.value = 0
+    void load()
+  }
+})
+
+async function search(): Promise<void> {
+  first.value = 0
+  await load()
+}
+
+async function resetFilters(): Promise<void> {
+  query.value = ''
+  statusFilter.value = 'ALL'
+  first.value = 0
+  await load()
+}
 
 function openCreateDialog(): void {
   createName.value = ''
@@ -136,6 +172,12 @@ async function publishCurriculum(row: CurriculumResponse): Promise<void> {
 function goDetail(row: CurriculumResponse): void {
   void router.push(`/mentor/curricula/${row.id}`)
 }
+
+function onPageChange(event: { first: number; rows: number }): void {
+  first.value = event.first
+  pageRows.value = event.rows
+  void load()
+}
 </script>
 
 <template>
@@ -152,7 +194,7 @@ function goDetail(row: CurriculumResponse): void {
         <div class="table-tools-left">
           <IconField>
             <InputIcon class="pi pi-search" />
-            <InputText v-model="query" placeholder="Search by name or description" />
+            <InputText v-model="query" placeholder="Search by name or description" @keyup.enter="search" />
           </IconField>
           <Select
             v-model="statusFilter"
@@ -161,14 +203,17 @@ function goDetail(row: CurriculumResponse): void {
             option-value="value"
             class="status-filter"
           />
+          <Button icon="pi pi-search" label="Search" severity="secondary" outlined @click="search" />
+          <Button icon="pi pi-times" label="Clear" severity="secondary" outlined @click="resetFilters" />
         </div>
         <Button icon="pi pi-plus" label="Create curriculum" @click="openCreateDialog" />
       </div>
+      <p class="table-count">All curricula: <strong>{{ summaryCount }}</strong></p>
 
       <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
 
       <DataTable
-        :value="filteredRows"
+        :value="rows"
         data-key="id"
         :loading="loading"
         class="p-datatable-sm"
@@ -213,6 +258,17 @@ function goDetail(row: CurriculumResponse): void {
           </template>
         </Column>
       </DataTable>
+
+      <div class="table-footer">
+        <Paginator
+          :rows="pageRows"
+          :first="first"
+          :total-records="totalRecords"
+          :rows-per-page-options="[8, 12, 20]"
+          template="PrevPageLink PageLinks NextPageLink RowsPerPageDropdown"
+          @page="onPageChange"
+        />
+      </div>
     </section>
 
     <Dialog v-model:visible="createDialogVisible" modal header="Create curriculum" :style="{ width: '32rem' }">
@@ -268,6 +324,11 @@ function goDetail(row: CurriculumResponse): void {
   min-width: 12rem;
 }
 
+.table-count {
+  margin: 0 0 0.75rem;
+  color: var(--text-muted);
+}
+
 .name {
   margin: 0;
   font-weight: 600;
@@ -276,6 +337,12 @@ function goDetail(row: CurriculumResponse): void {
 .actions {
   display: flex;
   gap: 0.35rem;
+  justify-content: flex-end;
+}
+
+.table-footer {
+  margin-top: 0.6rem;
+  display: flex;
   justify-content: flex-end;
 }
 
@@ -303,6 +370,10 @@ function goDetail(row: CurriculumResponse): void {
 
   .table-tools :deep(.p-button) {
     width: 100%;
+  }
+
+  .table-footer {
+    justify-content: center;
   }
 
 }

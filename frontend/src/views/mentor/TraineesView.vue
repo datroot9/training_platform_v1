@@ -24,7 +24,9 @@ import PageHeader from '../../components/layout/PageHeader.vue'
 const toast = useToast()
 
 const query = ref('')
+const activeFilter = ref<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL')
 const rows = ref<TraineeResponse[]>([])
+const totalRecords = ref(0)
 const curricula = ref<CurriculumResponse[]>([])
 const loading = ref(false)
 const error = ref('')
@@ -41,9 +43,13 @@ const pageRows = ref(8)
 const actionMenu = ref()
 const actionMenuItems = ref<MenuItem[]>([])
 
-const pagedRows = computed(() => rows.value.slice(first.value, first.value + pageRows.value))
+const summaryCount = computed(() => totalRecords.value)
 
-const summaryCount = computed(() => rows.value.length)
+const activeFilterOptions = [
+  { label: 'All statuses', value: 'ALL' as const },
+  { label: 'Active', value: 'ACTIVE' as const },
+  { label: 'Inactive', value: 'INACTIVE' as const },
+]
 
 function formatDate(value?: string | null): string {
   if (!value) return '-'
@@ -65,9 +71,26 @@ async function load(): Promise<void> {
   error.value = ''
   loading.value = true
   try {
-    rows.value = await mentorApi.listTrainees(query.value)
-    if (first.value >= rows.value.length) {
-      goToFirstPage()
+    const active = activeFilter.value === 'ALL' ? undefined : activeFilter.value === 'ACTIVE'
+    const page = Math.floor(first.value / pageRows.value)
+    const res = await mentorApi.listTrainees({
+      q: query.value,
+      active,
+      page,
+      size: pageRows.value,
+      sortBy: 'createdAt',
+      sortDir: 'desc',
+    })
+    rows.value = res.items
+    totalRecords.value = res.totalElements
+
+    // Keep paginator in valid range when current page no longer has rows.
+    if (res.items.length === 0 && res.totalElements > 0 && first.value >= res.totalElements) {
+      const lastFirst = Math.max(0, (Math.ceil(res.totalElements / pageRows.value) - 1) * pageRows.value)
+      if (lastFirst !== first.value) {
+        first.value = lastFirst
+        await load()
+      }
     }
   } catch (e) {
     error.value = e instanceof ApiError ? e.message : 'Failed to load trainees'
@@ -78,7 +101,12 @@ async function load(): Promise<void> {
 
 async function loadCurricula(): Promise<void> {
   try {
-    curricula.value = await mentorApi.listCurricula()
+    curricula.value = await mentorApi.listAllCurricula({
+      status: 'PUBLISHED',
+      sortBy: 'updatedAt',
+      sortDir: 'desc',
+      size: 100,
+    })
   } catch {
     /* optional for assign flow */
   }
@@ -91,9 +119,27 @@ onMounted(() => {
 
 watch(query, () => {
   if (!query.value.trim()) {
+    goToFirstPage()
     void load()
   }
 })
+
+watch(activeFilter, () => {
+  goToFirstPage()
+  void load()
+})
+
+async function search(): Promise<void> {
+  goToFirstPage()
+  await load()
+}
+
+async function resetFilters(): Promise<void> {
+  query.value = ''
+  activeFilter.value = 'ALL'
+  goToFirstPage()
+  await load()
+}
 
 async function createTrainee(): Promise<void> {
   error.value = ''
@@ -168,15 +214,6 @@ async function confirmAssign(): Promise<void> {
   }
 }
 
-function showFilterComingSoon(): void {
-  toast.add({
-    severity: 'info',
-    summary: 'Coming soon',
-    detail: 'Advanced filters are not yet supported by backend APIs.',
-    life: 3000,
-  })
-}
-
 function showBulkComingSoon(): void {
   toast.add({
     severity: 'info',
@@ -214,6 +251,7 @@ function openActionMenu(event: Event, row: TraineeResponse): void {
 function onPageChange(event: { first: number; rows: number }): void {
   first.value = event.first
   pageRows.value = event.rows
+  void load()
 }
 </script>
 
@@ -229,16 +267,18 @@ function onPageChange(event: { first: number; rows: number }): void {
         <div class="toolbar">
           <IconField>
             <InputIcon class="pi pi-search" />
-            <InputText v-model="query" placeholder="Search" @keyup.enter="load" />
+            <InputText v-model="query" placeholder="Search" @keyup.enter="search" />
           </IconField>
-
-          <Button
-            icon="pi pi-filter"
-            label="Filters"
-            severity="secondary"
-            outlined
-            @click="showFilterComingSoon"
+          <Select
+            v-model="activeFilter"
+            :options="activeFilterOptions"
+            option-label="label"
+            option-value="value"
+            placeholder="Access status"
+            class="active-filter"
           />
+          <Button icon="pi pi-search" label="Search" severity="secondary" outlined @click="search" />
+          <Button icon="pi pi-times" label="Clear" severity="secondary" outlined @click="resetFilters" />
           <Button icon="pi pi-users" label="Bulk actions" severity="secondary" outlined @click="showBulkComingSoon" />
           <Button icon="pi pi-plus" label="Add trainee" @click="createDialogVisible = true" />
         </div>
@@ -247,7 +287,7 @@ function onPageChange(event: { first: number; rows: number }): void {
       <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
 
       <DataTable
-        :value="pagedRows"
+        :value="rows"
         data-key="id"
         :loading="loading"
         class="p-datatable-sm"
@@ -303,7 +343,7 @@ function onPageChange(event: { first: number; rows: number }): void {
         <Paginator
           :rows="pageRows"
           :first="first"
-          :total-records="rows.length"
+          :total-records="totalRecords"
           :rows-per-page-options="[8, 12, 20]"
           template="PrevPageLink PageLinks NextPageLink RowsPerPageDropdown"
           @page="onPageChange"
@@ -388,6 +428,10 @@ function onPageChange(event: { first: number; rows: number }): void {
   flex-wrap: wrap;
   gap: 0.5rem;
   align-items: center;
+}
+
+.active-filter {
+  min-width: 11rem;
 }
 
 .table-footer {

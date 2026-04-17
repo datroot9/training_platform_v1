@@ -5,13 +5,53 @@ import type {
   CurriculumDetailResponse,
   CurriculumResponse,
   LearningMaterialResponse,
+  PagedResponse,
   TaskTemplateResponse,
   TraineeResponse,
 } from '../types'
 
-export async function listTrainees(query?: string): Promise<TraineeResponse[]> {
-  const q = query?.trim() ? `?q=${encodeURIComponent(query.trim())}` : ''
-  return requestJson<TraineeResponse[]>(`/api/mentor/trainees${q}`)
+type SortDirection = 'asc' | 'desc'
+
+type ListTraineesParams = {
+  q?: string
+  active?: boolean
+  page?: number
+  size?: number
+  sortBy?: 'createdAt' | 'fullName' | 'email'
+  sortDir?: SortDirection
+}
+
+type CurriculumStatus = 'DRAFT' | 'PUBLISHED'
+
+type ListCurriculaParams = {
+  q?: string
+  status?: CurriculumStatus
+  page?: number
+  size?: number
+  sortBy?: 'updatedAt' | 'createdAt' | 'name' | 'status' | 'publishedAt'
+  sortDir?: SortDirection
+}
+
+function buildQuery(params: Record<string, string | number | boolean | undefined>): string {
+  const search = new URLSearchParams()
+  for (const [key, value] of Object.entries(params)) {
+    if (value == null || value === '') continue
+    search.set(key, String(value))
+  }
+  const qs = search.toString()
+  return qs ? `?${qs}` : ''
+}
+
+export async function listTrainees(params: ListTraineesParams = {}): Promise<PagedResponse<TraineeResponse>> {
+  const q = buildQuery({
+    q: params.q?.trim() || undefined,
+    active: params.active,
+    page: params.page,
+    size: params.size,
+    sortBy: params.sortBy,
+    sortDir: params.sortDir,
+  })
+  return requestJson<PagedResponse<TraineeResponse>>(`/api/mentor/trainees${q}`)
 }
 
 export async function createTrainee(body: { email: string; fullName: string }): Promise<CreateTraineeResponse> {
@@ -44,8 +84,32 @@ export async function assignCurriculum(traineeId: number, curriculumId: number):
   })
 }
 
-export async function listCurricula(): Promise<CurriculumResponse[]> {
-  return requestJson<CurriculumResponse[]>('/api/mentor/curricula')
+export async function listCurricula(params: ListCurriculaParams = {}): Promise<PagedResponse<CurriculumResponse>> {
+  const q = buildQuery({
+    q: params.q?.trim() || undefined,
+    status: params.status,
+    page: params.page,
+    size: params.size,
+    sortBy: params.sortBy,
+    sortDir: params.sortDir,
+  })
+  return requestJson<PagedResponse<CurriculumResponse>>(`/api/mentor/curricula${q}`)
+}
+
+export async function listAllCurricula(params: Omit<ListCurriculaParams, 'page'> = {}): Promise<CurriculumResponse[]> {
+  const size = params.size ?? 100
+  let page = 0
+  let totalPages = 1
+  const items: CurriculumResponse[] = []
+
+  while (page < totalPages) {
+    const res = await listCurricula({ ...params, page, size })
+    items.push(...res.items)
+    totalPages = res.totalPages
+    page += 1
+  }
+
+  return items
 }
 
 export async function createCurriculum(body: { name: string; description: string }): Promise<CurriculumResponse> {

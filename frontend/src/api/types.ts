@@ -5,6 +5,14 @@ export interface ApiEnvelope<T> {
   data: T
 }
 
+export interface PagedResponse<T> {
+  items: T[]
+  page: number
+  size: number
+  totalElements: number
+  totalPages: number
+}
+
 export type Role = 'MENTOR' | 'TRAINEE'
 
 export interface StoredUser {
