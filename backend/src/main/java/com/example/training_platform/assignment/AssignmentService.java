@@ -7,6 +7,7 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
 
 import com.example.training_platform.assignment.dto.AssignmentResponse;
 import com.example.training_platform.assignment.dto.AssignmentTaskResponse;
@@ -46,12 +47,18 @@ public class AssignmentService {
         return createActiveAssignment(mentorId, traineeId, curriculumId, curriculumName);
     }
 
-    private AssignmentResponse createActiveAssignment(Long mentorId, Long traineeId, Long curriculumId, String curriculumName) {
+    private AssignmentResponse createActiveAssignment(
+            Long mentorId,
+            Long traineeId,
+            Long curriculumId,
+            String curriculumName
+    ) {
 
         try {
             jdbcTemplate.update(
                     """
-                    insert into trainee_curriculum_assignments (trainee_id, curriculum_id, assigned_by, status)
+                    insert into trainee_curriculum_assignments
+                    (trainee_id, curriculum_id, assigned_by, status)
                     values (?, ?, ?, 'ACTIVE')
                     """,
                     traineeId,
@@ -68,7 +75,7 @@ public class AssignmentService {
         Long assignmentId = jdbcTemplate.queryForObject("select last_insert_id()", Long.class);
         List<TaskTemplateRow> templates = jdbcTemplate.query(
                 """
-                select id, title, description
+                select id, title, description, estimated_days
                 from task_templates
                 where curriculum_id = ?
                 order by sort_order asc, id asc
@@ -76,7 +83,8 @@ public class AssignmentService {
                 (rs, rowNum) -> new TaskTemplateRow(
                         rs.getLong("id"),
                         rs.getString("title"),
-                        rs.getString("description")
+                        rs.getString("description"),
+                        rs.getObject("estimated_days", Integer.class)
                 ),
                 curriculumId
         );
@@ -84,13 +92,14 @@ public class AssignmentService {
         for (TaskTemplateRow template : templates) {
             jdbcTemplate.update(
                     """
-                    insert into tasks (assignment_id, task_template_id, title, description, status)
-                    values (?, ?, ?, ?, 'NOT_STARTED')
+                    insert into tasks (assignment_id, task_template_id, title, description, estimated_days, status)
+                    values (?, ?, ?, ?, ?, 'NOT_STARTED')
                     """,
                     assignmentId,
                     template.id(),
                     template.title(),
-                    template.description()
+                    template.description(),
+                    template.estimatedDays()
             );
         }
 
@@ -100,6 +109,10 @@ public class AssignmentService {
                         traineeId,
                         curriculumId,
                         curriculumName,
+                        null,
+                        null,
+                        null,
+                        null,
                         "ACTIVE",
                         LocalDateTime.now(),
                         null,
@@ -125,9 +138,13 @@ public class AssignmentService {
     public AssignmentResponse getActiveAssignment(Long traineeId) {
         List<AssignmentResponse> rows = jdbcTemplate.query(
                 """
-                select a.id, a.trainee_id, a.curriculum_id, c.name as curriculum_name, a.status, a.assigned_at, a.ended_at
+                select a.id, a.trainee_id, a.curriculum_id, c.name as curriculum_name, c.description as curriculum_description,
+                       m.full_name as mentor_name, m.email as mentor_email,
+                       a.status, a.assigned_at, a.ended_at
                 from trainee_curriculum_assignments a
                 join curricula c on c.id = a.curriculum_id
+                join users t on t.id = a.trainee_id
+                left join users m on m.id = t.mentor_id
                 where a.trainee_id = ?
                   and a.status = 'ACTIVE'
                 order by a.assigned_at desc
@@ -147,7 +164,7 @@ public class AssignmentService {
         return jdbcTemplate.query(
                 """
                 select t.id, t.assignment_id, t.task_template_id, tt.sort_order, t.title, t.description, t.status,
-                       t.started_at, t.completed_at, t.created_at, t.updated_at,
+                       t.estimated_days, t.started_at, t.completed_at, t.created_at, t.updated_at,
                        lm.id as learning_material_id, lm.file_name as learning_material_file_name
                 from tasks t
                 join task_templates tt on tt.id = t.task_template_id
@@ -158,6 +175,59 @@ public class AssignmentService {
                 this::mapAssignmentTask,
                 assignmentId
         );
+    }
+
+    @Transactional
+    public AssignmentTaskResponse updateTaskStatus(Long traineeId, Long assignmentId, Long taskId, String targetStatusRaw) {
+        assertAssignmentBelongsToTrainee(traineeId, assignmentId);
+        String targetStatus = normalizeTaskStatus(targetStatusRaw);
+        TaskStatusRow current = loadTaskStatus(assignmentId, taskId);
+        if (current.status().equals(targetStatus)) {
+            return loadAssignmentTask(assignmentId, taskId);
+        }
+        if (!isTaskStatusTransitionAllowed(current.status(), targetStatus)) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Invalid task status transition"
+            );
+        }
+
+        jdbcTemplate.update(
+                """
+                update tasks
+                set status = ?,
+                    started_at = ?,
+                    completed_at = ?
+                where id = ?
+                  and assignment_id = ?
+                """,
+                targetStatus,
+                resolveStartedAt(current.startedAt(), targetStatus),
+                resolveCompletedAt(targetStatus),
+                taskId,
+                assignmentId
+        );
+
+        return loadAssignmentTask(assignmentId, taskId);
+    }
+
+    private AssignmentTaskResponse loadAssignmentTask(Long assignmentId, Long taskId) {
+        return jdbcTemplate.query(
+                """
+                select t.id, t.assignment_id, t.task_template_id, tt.sort_order, t.title, t.description, t.status,
+                       t.estimated_days, t.started_at, t.completed_at, t.created_at, t.updated_at,
+                       lm.id as learning_material_id, lm.file_name as learning_material_file_name
+                from tasks t
+                join task_templates tt on tt.id = t.task_template_id
+                left join learning_materials lm on lm.id = tt.learning_material_id
+                where t.id = ?
+                  and t.assignment_id = ?
+                limit 1
+                """,
+                this::mapAssignmentTask,
+                taskId,
+                assignmentId
+        ).stream().findFirst().orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Task not found"));
     }
 
     public DownloadableMaterial loadMaterialForTrainee(Long traineeId, Long materialId) {
@@ -260,12 +330,70 @@ public class AssignmentService {
         }
     }
 
+    private TaskStatusRow loadTaskStatus(Long assignmentId, Long taskId) {
+        return jdbcTemplate.query(
+                """
+                select status, started_at
+                from tasks
+                where id = ?
+                  and assignment_id = ?
+                limit 1
+                """,
+                (rs, rowNum) -> new TaskStatusRow(
+                        rs.getString("status"),
+                        rs.getTimestamp("started_at")
+                ),
+                taskId,
+                assignmentId
+        ).stream().findFirst().orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Task not found"));
+    }
+
+    private static String normalizeTaskStatus(String rawStatus) {
+        if (rawStatus == null || rawStatus.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "status is required");
+        }
+        String normalized = rawStatus.trim().toUpperCase(Locale.ROOT);
+        if (!"NOT_STARTED".equals(normalized) && !"IN_PROGRESS".equals(normalized) && !"DONE".equals(normalized)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "status must be NOT_STARTED, IN_PROGRESS, or DONE");
+        }
+        return normalized;
+    }
+
+    private static boolean isTaskStatusTransitionAllowed(String current, String target) {
+        return switch (current) {
+            case "NOT_STARTED" -> "IN_PROGRESS".equals(target);
+            case "IN_PROGRESS" -> "NOT_STARTED".equals(target) || "DONE".equals(target);
+            case "DONE" -> "IN_PROGRESS".equals(target);
+            default -> false;
+        };
+    }
+
+    private static Timestamp resolveStartedAt(Timestamp currentStartedAt, String targetStatus) {
+        return switch (targetStatus) {
+            case "NOT_STARTED" -> null;
+            case "IN_PROGRESS", "DONE" -> currentStartedAt == null ? Timestamp.valueOf(LocalDateTime.now()) : currentStartedAt;
+            default -> currentStartedAt;
+        };
+    }
+
+    private static Timestamp resolveCompletedAt(String targetStatus) {
+        return switch (targetStatus) {
+            case "DONE" -> Timestamp.valueOf(LocalDateTime.now());
+            case "NOT_STARTED", "IN_PROGRESS" -> null;
+            default -> null;
+        };
+    }
+
     private java.util.Optional<AssignmentResponse> loadAssignmentById(Long traineeId, Long assignmentId, int generatedTaskCount) {
         List<AssignmentResponse> rows = jdbcTemplate.query(
                 """
-                select a.id, a.trainee_id, a.curriculum_id, c.name as curriculum_name, a.status, a.assigned_at, a.ended_at
+                select a.id, a.trainee_id, a.curriculum_id, c.name as curriculum_name, c.description as curriculum_description,
+                       m.full_name as mentor_name, m.email as mentor_email,
+                       a.status, a.assigned_at, a.ended_at
                 from trainee_curriculum_assignments a
                 join curricula c on c.id = a.curriculum_id
+                join users t on t.id = a.trainee_id
+                left join users m on m.id = t.mentor_id
                 where a.id = ?
                   and a.trainee_id = ?
                 """,
@@ -279,6 +407,10 @@ public class AssignmentService {
                         r.traineeId(),
                         r.curriculumId(),
                         r.curriculumName(),
+                        r.curriculumDescription(),
+                        r.mentorName(),
+                        r.mentorEmail(),
+                        r.totalEstimatedDays(),
                         r.status(),
                         r.assignedAt(),
                         r.endedAt(),
@@ -295,11 +427,20 @@ public class AssignmentService {
                 Integer.class,
                 assignmentId
         );
+        Integer totalEstimatedDays = jdbcTemplate.queryForObject(
+                "select sum(estimated_days) from tasks where assignment_id = ?",
+                Integer.class,
+                assignmentId
+        );
         return new AssignmentResponse(
                 assignmentId,
                 rs.getLong("trainee_id"),
                 rs.getLong("curriculum_id"),
                 rs.getString("curriculum_name"),
+                rs.getString("curriculum_description"),
+                rs.getString("mentor_name"),
+                rs.getString("mentor_email"),
+                totalEstimatedDays,
                 rs.getString("status"),
                 assignedAt == null ? null : assignedAt.toLocalDateTime(),
                 endedAt == null ? null : endedAt.toLocalDateTime(),
@@ -321,6 +462,7 @@ public class AssignmentService {
                 rs.getInt("sort_order"),
                 rs.getString("title"),
                 rs.getString("description"),
+                rs.getObject("estimated_days", Integer.class),
                 rs.getString("status"),
                 startedAt == null ? null : startedAt.toLocalDateTime(),
                 completedAt == null ? null : completedAt.toLocalDateTime(),
@@ -331,7 +473,10 @@ public class AssignmentService {
         );
     }
 
-    private record TaskTemplateRow(Long id, String title, String description) {
+    private record TaskTemplateRow(Long id, String title, String description, Integer estimatedDays) {
+    }
+
+    private record TaskStatusRow(String status, Timestamp startedAt) {
     }
 
     public record DownloadableMaterial(Long id, String fileName, String storagePath) {

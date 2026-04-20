@@ -9,6 +9,7 @@ public record TaskTemplateResponse(
         int sortOrder,
         String title,
         String description,
+        Integer estimatedDays,
         LocalDateTime createdAt,
         LocalDateTime updatedAt
 ) {

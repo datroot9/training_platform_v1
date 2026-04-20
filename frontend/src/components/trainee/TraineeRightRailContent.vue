@@ -110,7 +110,6 @@ function onLogout(): void {
 
       <section class="links">
         <p class="section-label">Quick links</p>
-        <Button label="Curriculum roadmap" icon="pi pi-map" class="w-full" outlined @click="go('/trainee/curriculum')" />
         <Button
           label="My assignment"
           icon="pi pi-bookmark"

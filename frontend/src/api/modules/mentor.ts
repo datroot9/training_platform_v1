@@ -77,14 +77,20 @@ export async function resetTraineePassword(traineeId: number): Promise<{
   return requestJson(`/api/mentor/trainees/${traineeId}/reset-password`, { method: 'POST' })
 }
 
-export async function assignCurriculum(traineeId: number, curriculumId: number): Promise<AssignmentResponse> {
+export async function assignCurriculum(
+  traineeId: number,
+  curriculumId: number,
+): Promise<AssignmentResponse> {
   return requestJson<AssignmentResponse>(`/api/mentor/trainees/${traineeId}/assignments`, {
     method: 'POST',
     body: JSON.stringify({ curriculumId }),
   })
 }
 
-export async function replaceActiveAssignment(traineeId: number, curriculumId: number): Promise<AssignmentResponse> {
+export async function replaceActiveAssignment(
+  traineeId: number,
+  curriculumId: number,
+): Promise<AssignmentResponse> {
   return requestJson<AssignmentResponse>(`/api/mentor/trainees/${traineeId}/assignments/active`, {
     method: 'PUT',
     body: JSON.stringify({ curriculumId }),
@@ -140,6 +146,12 @@ export async function updateCurriculum(
   })
 }
 
+export async function deleteCurriculumDraft(curriculumId: number): Promise<void> {
+  await requestJson<null>(`/api/mentor/curricula/${curriculumId}`, {
+    method: 'DELETE',
+  })
+}
+
 export async function uploadMaterial(
   curriculumId: number,
   file: File,
@@ -162,7 +174,13 @@ export async function deleteMaterial(curriculumId: number, materialId: number): 
 
 export async function createTaskTemplate(
   curriculumId: number,
-  body: { title: string; description?: string; sortOrder?: number; learningMaterialId?: number },
+  body: {
+    title: string
+    description?: string
+    estimatedDays?: number
+    sortOrder?: number
+    learningMaterialId?: number
+  },
 ): Promise<TaskTemplateResponse> {
   return requestJson<TaskTemplateResponse>(`/api/mentor/curricula/${curriculumId}/task-templates`, {
     method: 'POST',
@@ -173,7 +191,13 @@ export async function createTaskTemplate(
 export async function updateTaskTemplate(
   curriculumId: number,
   templateId: number,
-  body: { title?: string; description?: string; sortOrder?: number; learningMaterialId?: number | null },
+  body: {
+    title?: string
+    description?: string
+    estimatedDays?: number
+    sortOrder?: number
+    learningMaterialId?: number | null
+  },
 ): Promise<TaskTemplateResponse> {
   return requestJson<TaskTemplateResponse>(
     `/api/mentor/curricula/${curriculumId}/task-templates/${templateId}`,

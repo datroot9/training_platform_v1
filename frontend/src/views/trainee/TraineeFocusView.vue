@@ -7,10 +7,12 @@ import ProgressSpinner from 'primevue/progressspinner'
 import Tag from 'primevue/tag'
 import PageHeader from '../../components/layout/PageHeader.vue'
 import {
+  allowedTaskStatusTargets,
   injectTraineeAssignment,
   taskStatusLabel,
   taskStatusTagSeverity,
 } from '../../composables/useTraineeAssignment'
+import type { AssignmentTaskResponse, TaskStatus } from '../../api/types'
 
 const {
   assignment,
@@ -21,7 +23,9 @@ const {
   completedTaskCount,
   totalTaskCount,
   progressPercent,
+  updatingTaskIds,
   downloadPdf,
+  setTaskStatus,
 } = injectTraineeAssignment()
 
 const nextTask = computed(() => {
@@ -37,6 +41,41 @@ const upcomingTasks = computed(() => {
 })
 
 const allDone = computed(() => hasAssignment.value && tasks.value.length > 0 && nextTask.value == null)
+
+const mentorNameDisplay = computed(() => assignment.value?.mentorName?.trim() || '-')
+const mentorEmailDisplay = computed(() => assignment.value?.mentorEmail?.trim() || '-')
+const estimatedDaysDisplay = computed(() => assignment.value?.totalEstimatedDays)
+
+const orderedTasks = computed(() => [...tasks.value].sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id))
+
+function statusActionLabel(status: TaskStatus): string {
+  switch (status) {
+    case 'IN_PROGRESS':
+      return 'Mark in progress'
+    case 'DONE':
+      return 'Mark done'
+    case 'NOT_STARTED':
+      return 'Mark not started'
+    default:
+      return status
+  }
+}
+
+function statusActionSeverity(status: TaskStatus): 'success' | 'secondary' {
+  return status === 'DONE' ? 'success' : 'secondary'
+}
+
+function statusTargets(task: AssignmentTaskResponse): TaskStatus[] {
+  return allowedTaskStatusTargets(task.status)
+}
+
+async function changeTaskStatus(taskId: number, target: TaskStatus): Promise<void> {
+  try {
+    await setTaskStatus(taskId, target)
+  } catch {
+    // Error message is already surfaced by the shared composable.
+  }
+}
 </script>
 
 <template>
@@ -67,9 +106,24 @@ const allDone = computed(() => hasAssignment.value && tasks.value.length > 0 && 
     </template>
 
     <template v-else>
+      <section class="meta-card">
+        <h2 class="meta-title">{{ assignment!.curriculumName }}</h2>
+        <p class="meta-desc">
+          {{ assignment!.curriculumDescription?.trim() || 'No curriculum description provided by your mentor yet.' }}
+        </p>
+        <div class="meta-grid">
+          <p><strong>Mentor:</strong> {{ mentorNameDisplay }}</p>
+          <p><strong>Mentor email:</strong> {{ mentorEmailDisplay }}</p>
+          <p>
+            <strong>Estimated completion:</strong>
+            <span v-if="estimatedDaysDisplay != null">{{ estimatedDaysDisplay }} days</span>
+            <span v-else>Not set</span>
+          </p>
+        </div>
+      </section>
+
       <p class="summary">
-        <strong>{{ assignment!.curriculumName }}</strong>
-        <span class="muted"> · {{ completedTaskCount }} of {{ totalTaskCount }} tasks done</span>
+        <span class="muted">{{ completedTaskCount }} of {{ totalTaskCount }} tasks done</span>
       </p>
 
       <section v-if="nextTask" class="hero">
@@ -87,7 +141,21 @@ const allDone = computed(() => hasAssignment.value && tasks.value.length > 0 && 
           </template>
           <template #content>
             <p v-if="nextTask.description" class="desc">{{ nextTask.description }}</p>
+            <p class="estimate">Estimated: {{ nextTask.estimatedDays != null ? `${nextTask.estimatedDays} day(s)` : 'Not set' }}</p>
             <div class="hero-actions">
+              <div class="status-actions">
+                <Button
+                  v-for="target in statusTargets(nextTask)"
+                  :key="`next-${target}`"
+                  :label="statusActionLabel(target)"
+                  :severity="statusActionSeverity(target)"
+                  :loading="updatingTaskIds.has(nextTask.id)"
+                  :disabled="updatingTaskIds.has(nextTask.id)"
+                  size="small"
+                  outlined
+                  @click="changeTaskStatus(nextTask.id, target)"
+                />
+              </div>
               <Button
                 v-if="nextTask.learningMaterialId != null"
                 label="Download PDF for this step"
@@ -110,6 +178,22 @@ const allDone = computed(() => hasAssignment.value && tasks.value.length > 0 && 
             </template>
             <template #content>
               <Tag :value="taskStatusLabel(t.status)" :severity="taskStatusTagSeverity(t.status)" class="mb-tag" />
+              <p class="estimate compact">
+                Estimated: {{ t.estimatedDays != null ? `${t.estimatedDays} day(s)` : 'Not set' }}
+              </p>
+              <div class="status-actions compact">
+                <Button
+                  v-for="target in statusTargets(t)"
+                  :key="`up-${t.id}-${target}`"
+                  :label="statusActionLabel(target)"
+                  :severity="statusActionSeverity(target)"
+                  :loading="updatingTaskIds.has(t.id)"
+                  :disabled="updatingTaskIds.has(t.id)"
+                  size="small"
+                  text
+                  @click="changeTaskStatus(t.id, target)"
+                />
+              </div>
               <Button
                 v-if="t.learningMaterialId != null"
                 label="PDF"
@@ -121,6 +205,47 @@ const allDone = computed(() => hasAssignment.value && tasks.value.length > 0 && 
             </template>
           </Card>
         </div>
+      </section>
+
+      <section class="all-tasks">
+        <h2 class="section-title">All tasks</h2>
+        <Card v-for="task in orderedTasks" :key="`all-${task.id}`" class="task-row">
+          <template #title>
+            <div class="task-row-title">
+              <span>Step {{ task.sortOrder }} · {{ task.title }}</span>
+              <Tag :value="taskStatusLabel(task.status)" :severity="taskStatusTagSeverity(task.status)" rounded />
+            </div>
+          </template>
+          <template #content>
+            <p v-if="task.description" class="desc compact">{{ task.description }}</p>
+            <p class="estimate compact">
+              Estimated: {{ task.estimatedDays != null ? `${task.estimatedDays} day(s)` : 'Not set' }}
+            </p>
+            <div class="task-row-actions">
+              <div class="status-actions">
+                <Button
+                  v-for="target in statusTargets(task)"
+                  :key="`all-status-${task.id}-${target}`"
+                  :label="statusActionLabel(target)"
+                  :severity="statusActionSeverity(target)"
+                  :loading="updatingTaskIds.has(task.id)"
+                  :disabled="updatingTaskIds.has(task.id)"
+                  size="small"
+                  outlined
+                  @click="changeTaskStatus(task.id, target)"
+                />
+              </div>
+              <Button
+                v-if="task.learningMaterialId != null"
+                label="Download PDF"
+                icon="pi pi-download"
+                size="small"
+                text
+                @click="downloadPdf(task.learningMaterialId)"
+              />
+            </div>
+          </template>
+        </Card>
       </section>
     </template>
   </div>
@@ -141,6 +266,31 @@ const allDone = computed(() => hasAssignment.value && tasks.value.length > 0 && 
 .summary {
   margin: 0.25rem 0 1.25rem;
   font-size: 1rem;
+}
+.meta-card {
+  border: 1px solid #ddd6fe;
+  background: #faf5ff;
+  border-radius: 12px;
+  padding: 0.9rem 1rem;
+  margin: 0.25rem 0 1rem;
+}
+.meta-title {
+  margin: 0;
+  font-size: 1.1rem;
+}
+.meta-desc {
+  margin: 0.35rem 0 0.65rem;
+  color: #475569;
+  line-height: 1.45;
+}
+.meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.35rem 0.9rem;
+}
+.meta-grid p {
+  margin: 0;
+  font-size: 0.92rem;
 }
 .muted {
   color: var(--text-muted);
@@ -185,6 +335,23 @@ const allDone = computed(() => hasAssignment.value && tasks.value.length > 0 && 
   align-items: flex-start;
   gap: 0.5rem;
 }
+.estimate {
+  margin: 0 0 0.65rem;
+  color: #475569;
+  font-size: 0.92rem;
+}
+.estimate.compact {
+  margin-bottom: 0.45rem;
+  font-size: 0.86rem;
+}
+.status-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.status-actions.compact {
+  margin-bottom: 0.35rem;
+}
 .section-title {
   margin: 0 0 0.75rem;
   font-size: 1.1rem;
@@ -206,5 +373,27 @@ const allDone = computed(() => hasAssignment.value && tasks.value.length > 0 && 
 }
 .mb-tag {
   margin-bottom: 0.35rem;
+}
+.all-tasks {
+  margin-top: 1rem;
+}
+.task-row {
+  border: 1px solid #e2e8f0;
+  box-shadow: none;
+  margin-bottom: 0.75rem;
+}
+.task-row-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.task-row-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  align-items: center;
 }
 </style>

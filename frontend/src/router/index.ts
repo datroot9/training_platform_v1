@@ -44,11 +44,6 @@ const router = createRouter({
       children: [
         { path: '', name: 'trainee-home', component: () => import('../views/trainee/TraineeDashboardView.vue') },
         {
-          path: 'curriculum',
-          name: 'trainee-curriculum',
-          component: () => import('../views/trainee/TraineeLearningPathView.vue'),
-        },
-        {
           path: 'assignment',
           name: 'trainee-assignment',
           component: () => import('../views/trainee/TraineeFocusView.vue'),

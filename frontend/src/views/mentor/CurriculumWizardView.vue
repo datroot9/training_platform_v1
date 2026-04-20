@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import Button from 'primevue/button'
 import Column from 'primevue/column'
 import DataTable from 'primevue/datatable'
@@ -65,15 +65,33 @@ const templateEditing = ref<TaskTemplateResponse | null>(null)
 const templateToDelete = ref<TaskTemplateResponse | null>(null)
 const templateTitle = ref('')
 const templateDescription = ref('')
+const templateEstimatedDays = ref<number | null>(null)
 const templateSortOrder = ref<number | null>(null)
 const templateMaterialId = ref<number | null>(null)
 const templateSubmitting = ref(false)
 
 const publishSubmitting = ref(false)
+const discardDialogVisible = ref(false)
+const discardSubmitting = ref(false)
+const bypassLeaveGuard = ref(false)
 
 const hasMaterials = computed(() => (detail.value?.materials.length ?? 0) > 0)
 const hasTemplates = computed(() => (detail.value?.taskTemplates.length ?? 0) > 0)
 const publishReady = computed(() => hasMaterials.value && hasTemplates.value)
+const hasPersistedDraft = computed(
+  () => curriculumId.value != null && detail.value?.curriculum.status === 'DRAFT',
+)
+const hasDraftProgress = computed(
+  () =>
+    !!metaName.value.trim() ||
+    !!metaDescription.value.trim() ||
+    pendingFiles.value.length > 0 ||
+    hasMaterials.value ||
+    hasTemplates.value,
+)
+const shouldWarnOnLeave = computed(
+  () => hasPersistedDraft.value && hasDraftProgress.value && !bypassLeaveGuard.value,
+)
 
 const materialOptions = computed(() =>
   (detail.value?.materials ?? []).map((item) => ({
@@ -178,6 +196,7 @@ async function confirmDeleteMaterial(): Promise<void> {
 function resetTemplateForm(): void {
   templateTitle.value = ''
   templateDescription.value = ''
+  templateEstimatedDays.value = null
   templateSortOrder.value = null
   templateMaterialId.value = null
   templateEditing.value = null
@@ -194,6 +213,7 @@ function openEditTemplate(item: TaskTemplateResponse): void {
   templateEditing.value = item
   templateTitle.value = item.title
   templateDescription.value = item.description ?? ''
+  templateEstimatedDays.value = item.estimatedDays
   templateSortOrder.value = item.sortOrder
   templateMaterialId.value = item.learningMaterialId
   templateDialogVisible.value = true
@@ -209,6 +229,7 @@ async function submitTemplate(): Promise<void> {
       await mentorApi.createTaskTemplate(id, {
         title: templateTitle.value.trim(),
         description: templateDescription.value.trim() || undefined,
+        estimatedDays: templateEstimatedDays.value ?? undefined,
         sortOrder: templateSortOrder.value ?? undefined,
         learningMaterialId: templateMaterialId.value ?? undefined,
       })
@@ -217,6 +238,7 @@ async function submitTemplate(): Promise<void> {
       await mentorApi.updateTaskTemplate(id, templateEditing.value.id, {
         title: templateTitle.value.trim(),
         description: templateDescription.value.trim() || undefined,
+        estimatedDays: templateEstimatedDays.value ?? undefined,
         sortOrder: templateSortOrder.value ?? undefined,
         learningMaterialId: templateMaterialId.value,
       })
@@ -314,6 +336,7 @@ async function confirmPublish(): Promise<void> {
       detail: 'You can assign it to trainees from the Trainees page.',
       life: 4000,
     })
+    bypassLeaveGuard.value = true
     await router.push({ name: 'mentor-curriculum-detail', params: { id: String(id) } })
   } catch (e) {
     error.value = e instanceof ApiError ? e.message : 'Publish failed'
@@ -322,7 +345,51 @@ async function confirmPublish(): Promise<void> {
   }
 }
 
+function askDiscardDraft(): void {
+  if (!hasPersistedDraft.value) return
+  discardDialogVisible.value = true
+}
+
+async function confirmDiscardDraft(): Promise<void> {
+  const id = curriculumId.value
+  if (id == null || !hasPersistedDraft.value) return
+  discardSubmitting.value = true
+  error.value = ''
+  try {
+    await mentorApi.deleteCurriculumDraft(id)
+    discardDialogVisible.value = false
+    bypassLeaveGuard.value = true
+    toast.add({
+      severity: 'success',
+      summary: 'Draft discarded',
+      detail: 'Unpublished curriculum draft was deleted.',
+      life: 2600,
+    })
+    await router.push({ name: 'mentor-curricula' })
+  } catch (e) {
+    error.value = e instanceof ApiError ? e.message : 'Could not discard draft'
+  } finally {
+    discardSubmitting.value = false
+  }
+}
+
+function handleBeforeUnload(event: BeforeUnloadEvent): void {
+  if (!shouldWarnOnLeave.value) return
+  event.preventDefault()
+  event.returnValue = ''
+}
+
+onBeforeRouteLeave(() => {
+  if (!shouldWarnOnLeave.value) return true
+  return window.confirm('You have an unpublished curriculum draft. Leave this page anyway?')
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('beforeunload', handleBeforeUnload)
+})
+
 onMounted(async () => {
+  window.addEventListener('beforeunload', handleBeforeUnload)
   const qid = route.query.id
   if (qid == null || qid === '') {
     return
@@ -355,6 +422,17 @@ onMounted(async () => {
       :show-back="true"
       back-to="/mentor/curricula"
     />
+
+    <div v-if="hasPersistedDraft" class="wizard-actions">
+      <Button
+        label="Discard draft"
+        icon="pi pi-trash"
+        severity="danger"
+        outlined
+        :loading="discardSubmitting"
+        @click="askDiscardDraft"
+      />
+    </div>
 
     <Message v-if="error" severity="error" :closable="false" class="wizard-error">{{ error }}</Message>
 
@@ -476,6 +554,11 @@ onMounted(async () => {
           responsive-layout="scroll"
         >
           <Column field="title" header="Title" />
+          <Column header="Estimate (days)" style="width: 9rem">
+            <template #body="{ data }">
+              {{ data.estimatedDays ?? '-' }}
+            </template>
+          </Column>
           <Column field="sortOrder" header="Order" style="width: 6rem" />
           <Column header="Material">
             <template #body="{ data }">
@@ -552,6 +635,10 @@ onMounted(async () => {
           <Textarea v-model="templateDescription" rows="3" auto-resize />
         </label>
         <label>
+          Estimated days (optional)
+          <InputNumber v-model="templateEstimatedDays" :min="1" :max="3650" :use-grouping="false" />
+        </label>
+        <label>
           Sort order (optional)
           <InputNumber v-model="templateSortOrder" :min="0" :use-grouping="false" />
         </label>
@@ -585,6 +672,22 @@ onMounted(async () => {
         <Button label="Remove" severity="danger" @click="confirmDeleteTemplate" />
       </template>
     </Dialog>
+
+    <Dialog v-model:visible="discardDialogVisible" modal header="Discard draft" :style="{ width: '28rem' }">
+      <p>
+        This will permanently delete this unpublished draft, including uploaded materials and task templates. Continue?
+      </p>
+      <template #footer>
+        <Button label="Cancel" text @click="discardDialogVisible = false" />
+        <Button
+          label="Discard"
+          icon="pi pi-trash"
+          severity="danger"
+          :loading="discardSubmitting"
+          @click="confirmDiscardDraft"
+        />
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -593,6 +696,11 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+}
+
+.wizard-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .wizard-error {

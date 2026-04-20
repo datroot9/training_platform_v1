@@ -14,6 +14,7 @@ export interface PagedResponse<T> {
 }
 
 export type Role = 'MENTOR' | 'TRAINEE'
+export type TaskStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'DONE'
 
 export interface StoredUser {
   userId: number
@@ -81,6 +82,7 @@ export interface TaskTemplateResponse {
   curriculumId: number
   title: string
   description: string | null
+  estimatedDays: number | null
   sortOrder: number
   learningMaterialId: number | null
   createdAt: string
@@ -92,6 +94,10 @@ export interface AssignmentResponse {
   traineeId: number
   curriculumId: number
   curriculumName: string
+  curriculumDescription: string | null
+  mentorName: string | null
+  mentorEmail: string | null
+  totalEstimatedDays: number | null
   status: string
   assignedAt: string
   endedAt: string | null
@@ -105,7 +111,8 @@ export interface AssignmentTaskResponse {
   sortOrder: number
   title: string
   description: string | null
-  status: string
+  estimatedDays: number | null
+  status: TaskStatus
   startedAt: string | null
   completedAt: string | null
   createdAt: string

@@ -10,10 +10,9 @@ const router = useRouter()
   <div class="wrap">
     <PageHeader
       title="Dashboard"
-      description="A full progress overview will be added later. For now, open your learning path or current assignment from below or the sidebar."
+      description="A full progress overview will be added later. For now, open your current assignment from below or the side panel."
     />
     <div class="actions">
-      <Button label="Curriculum roadmap" icon="pi pi-map" @click="router.push('/trainee/curriculum')" />
       <Button
         label="My assignment"
         severity="secondary"

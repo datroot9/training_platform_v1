@@ -1,5 +1,5 @@
 import { ApiError, requestJson, requestRaw } from '../client'
-import type { AssignmentResponse, AssignmentTaskResponse } from '../types'
+import type { AssignmentResponse, AssignmentTaskResponse, TaskStatus } from '../types'
 
 export async function getActiveAssignment(): Promise<AssignmentResponse> {
   return requestJson<AssignmentResponse>('/api/trainee/assignments/active')
@@ -17,6 +17,17 @@ export async function getActiveAssignmentOrNull(): Promise<AssignmentResponse | 
 
 export async function getAssignmentTasks(assignmentId: number): Promise<AssignmentTaskResponse[]> {
   return requestJson<AssignmentTaskResponse[]>(`/api/trainee/assignments/${assignmentId}/tasks`)
+}
+
+export async function updateTaskStatus(
+  assignmentId: number,
+  taskId: number,
+  status: TaskStatus,
+): Promise<AssignmentTaskResponse> {
+  return requestJson<AssignmentTaskResponse>(`/api/trainee/assignments/${assignmentId}/tasks/${taskId}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  })
 }
 
 function parseFilename(contentDisposition: string | null): string {

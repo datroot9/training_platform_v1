@@ -38,7 +38,11 @@ public class MentorAssignmentController {
             @Valid @RequestBody AssignCurriculumRequest request
     ) {
         AuthenticatedUser current = (AuthenticatedUser) authentication.getPrincipal();
-        AssignmentResponse data = assignmentService.assignCurriculum(current.userId(), traineeId, request.curriculumId());
+        AssignmentResponse data = assignmentService.assignCurriculum(
+                current.userId(),
+                traineeId,
+                request.curriculumId()
+        );
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(HttpStatus.CREATED.value(), "Curriculum assigned successfully", data));
     }
@@ -51,7 +55,11 @@ public class MentorAssignmentController {
             @Valid @RequestBody AssignCurriculumRequest request
     ) {
         AuthenticatedUser current = (AuthenticatedUser) authentication.getPrincipal();
-        AssignmentResponse data = assignmentService.replaceActiveAssignment(current.userId(), traineeId, request.curriculumId());
+        AssignmentResponse data = assignmentService.replaceActiveAssignment(
+                current.userId(),
+                traineeId,
+                request.curriculumId()
+        );
         return ResponseEntity.ok(
                 ApiResponse.success(HttpStatus.OK.value(), "Active assignment replaced successfully", data)
         );

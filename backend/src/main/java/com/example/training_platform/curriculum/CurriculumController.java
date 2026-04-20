@@ -103,6 +103,15 @@ public class CurriculumController {
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Curriculum updated", data));
     }
 
+    @DeleteMapping("/{id}")
+    @Operation(summary = "Delete curriculum draft (DRAFT only)")
+    public ResponseEntity<ApiResponse<Void>> deleteDraft(Authentication authentication,
+                                                         @PathVariable("id") Long curriculumId) {
+        AuthenticatedUser current = (AuthenticatedUser) authentication.getPrincipal();
+        curriculumService.deleteDraft(current.userId(), curriculumId);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Curriculum draft deleted", null));
+    }
+
     @PostMapping(value = "/{id}/materials", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @Operation(summary = "Upload a PDF learning material (DRAFT only)")
     public ResponseEntity<ApiResponse<LearningMaterialResponse>> uploadMaterial(

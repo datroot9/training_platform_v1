@@ -5,9 +5,11 @@ import java.util.List;
 
 import com.example.training_platform.assignment.dto.AssignmentResponse;
 import com.example.training_platform.assignment.dto.AssignmentTaskResponse;
+import com.example.training_platform.assignment.dto.UpdateTaskStatusRequest;
 import com.example.training_platform.auth.AuthenticatedUser;
 import com.example.training_platform.common.dto.ApiResponse;
 import com.example.training_platform.curriculum.LocalPdfStorageService;
+import jakarta.validation.Valid;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -20,7 +22,9 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -55,6 +59,24 @@ public class TraineeAssignmentController {
         AuthenticatedUser current = (AuthenticatedUser) authentication.getPrincipal();
         List<AssignmentTaskResponse> data = assignmentService.getAssignmentTasks(current.userId(), assignmentId);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Assignment tasks fetched", data));
+    }
+
+    @PatchMapping("/assignments/{assignmentId}/tasks/{taskId}/status")
+    @Operation(summary = "Update status for a task in trainee assignment")
+    public ResponseEntity<ApiResponse<AssignmentTaskResponse>> updateTaskStatus(
+            Authentication authentication,
+            @PathVariable("assignmentId") Long assignmentId,
+            @PathVariable("taskId") Long taskId,
+            @Valid @RequestBody UpdateTaskStatusRequest request
+    ) {
+        AuthenticatedUser current = (AuthenticatedUser) authentication.getPrincipal();
+        AssignmentTaskResponse data = assignmentService.updateTaskStatus(
+                current.userId(),
+                assignmentId,
+                taskId,
+                request.status()
+        );
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Task status updated", data));
     }
 
     @GetMapping("/materials/{materialId}/download")

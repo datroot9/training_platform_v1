@@ -4,11 +4,13 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 import com.example.training_platform.common.dto.PagedResponse;
 import com.example.training_platform.curriculum.dto.CreateCurriculumRequest;
@@ -140,7 +142,7 @@ public class CurriculumService {
 
         List<TaskTemplateResponse> templates = jdbcTemplate.query(
                 """
-                select id, curriculum_id, learning_material_id, sort_order, title, description, created_at, updated_at
+                select id, curriculum_id, learning_material_id, sort_order, title, description, estimated_days, created_at, updated_at
                 from task_templates
                 where curriculum_id = ?
                 order by sort_order asc, id asc
@@ -280,7 +282,7 @@ public class CurriculumService {
 
         List<TemplateCopyRow> templates = jdbcTemplate.query(
                 """
-                select learning_material_id, sort_order, title, description
+                select learning_material_id, sort_order, title, description, estimated_days
                 from task_templates
                 where curriculum_id = ?
                 order by sort_order asc, id asc
@@ -292,7 +294,8 @@ public class CurriculumService {
                             lmNull ? null : lm,
                             rs.getInt("sort_order"),
                             rs.getString("title"),
-                            rs.getString("description")
+                            rs.getString("description"),
+                            rs.getObject("estimated_days", Integer.class)
                     );
                 },
                 sourceCurriculumId
@@ -308,14 +311,15 @@ public class CurriculumService {
             }
             jdbcTemplate.update(
                     """
-                    insert into task_templates (curriculum_id, learning_material_id, sort_order, title, description)
-                    values (?, ?, ?, ?, ?)
+                    insert into task_templates (curriculum_id, learning_material_id, sort_order, title, description, estimated_days)
+                    values (?, ?, ?, ?, ?, ?)
                     """,
                     newCurriculumId,
                     newLm,
                     t.sortOrder(),
                     t.title(),
-                    t.description()
+                    t.description(),
+                    t.estimatedDays()
             );
         }
 
@@ -412,14 +416,15 @@ public class CurriculumService {
         try {
             jdbcTemplate.update(
                     """
-                    insert into task_templates (curriculum_id, learning_material_id, sort_order, title, description)
-                    values (?, ?, ?, ?, ?)
+                    insert into task_templates (curriculum_id, learning_material_id, sort_order, title, description, estimated_days)
+                    values (?, ?, ?, ?, ?, ?)
                     """,
                     curriculumId,
                     request.learningMaterialId(),
                     order,
                     request.title(),
-                    request.description()
+                    request.description(),
+                    request.estimatedDays()
             );
         } catch (DuplicateKeyException e) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Duplicate sort order for a task template in this curriculum");
@@ -433,7 +438,7 @@ public class CurriculumService {
         Long templateId = jdbcTemplate.queryForObject("select last_insert_id()", Long.class);
         return jdbcTemplate.query(
                 """
-                select id, curriculum_id, learning_material_id, sort_order, title, description, created_at, updated_at
+                select id, curriculum_id, learning_material_id, sort_order, title, description, estimated_days, created_at, updated_at
                 from task_templates where id = ?
                 """,
                 this::mapTemplate,
@@ -478,6 +483,15 @@ public class CurriculumService {
             );
             any = true;
         }
+        if (request.estimatedDays() != null) {
+            jdbcTemplate.update(
+                    "update task_templates set estimated_days = ? where id = ? and curriculum_id = ?",
+                    request.estimatedDays(),
+                    templateId,
+                    curriculumId
+            );
+            any = true;
+        }
         if (request.sortOrder() != null) {
             try {
                 jdbcTemplate.update(
@@ -514,7 +528,7 @@ public class CurriculumService {
         }
         return jdbcTemplate.query(
                 """
-                select id, curriculum_id, learning_material_id, sort_order, title, description, created_at, updated_at
+                select id, curriculum_id, learning_material_id, sort_order, title, description, estimated_days, created_at, updated_at
                 from task_templates where id = ? and curriculum_id = ?
                 """,
                 this::mapTemplate,
@@ -532,6 +546,52 @@ public class CurriculumService {
         );
         if (deleted == 0) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Task template not found");
+        }
+    }
+
+    @Transactional
+    public void deleteDraft(Long mentorId, Long curriculumId) {
+        assertDraft(mentorId, curriculumId);
+        Integer assignmentCount = jdbcTemplate.queryForObject(
+                "select count(*) from trainee_curriculum_assignments where curriculum_id = ?",
+                Integer.class,
+                curriculumId
+        );
+        if (assignmentCount != null && assignmentCount > 0) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Cannot delete this draft because it is already referenced by trainee assignments"
+            );
+        }
+
+        jdbcTemplate.update("delete from task_templates where curriculum_id = ?", curriculumId);
+
+        List<String> paths = jdbcTemplate.query(
+                "select storage_path from learning_materials where curriculum_id = ?",
+                (rs, i) -> rs.getString("storage_path"),
+                curriculumId
+        );
+        jdbcTemplate.update("delete from learning_materials where curriculum_id = ?", curriculumId);
+
+        Set<String> uniquePaths = new LinkedHashSet<>(paths);
+        for (String path : uniquePaths) {
+            Integer remaining = jdbcTemplate.queryForObject(
+                    "select count(*) from learning_materials where storage_path = ?",
+                    Integer.class,
+                    path
+            );
+            if (remaining == null || remaining == 0) {
+                pdfStorage.deleteIfExists(path);
+            }
+        }
+
+        int deletedCurriculum = jdbcTemplate.update(
+                "delete from curricula where id = ? and created_by = ? and status = 'DRAFT'",
+                curriculumId,
+                mentorId
+        );
+        if (deletedCurriculum == 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Curriculum cannot be deleted");
         }
     }
 
@@ -644,6 +704,7 @@ public class CurriculumService {
                 rs.getInt("sort_order"),
                 rs.getString("title"),
                 rs.getString("description"),
+                rs.getObject("estimated_days", Integer.class),
                 created == null ? null : created.toLocalDateTime(),
                 updated == null ? null : updated.toLocalDateTime()
         );
@@ -758,6 +819,7 @@ public class CurriculumService {
                                    Timestamp uploadedAt) {
     }
 
-    private record TemplateCopyRow(Long oldLearningMaterialId, int sortOrder, String title, String description) {
+    private record TemplateCopyRow(Long oldLearningMaterialId, int sortOrder, String title, String description,
+                                   Integer estimatedDays) {
     }
 }

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.verify;
@@ -12,8 +13,12 @@ import static org.mockito.Mockito.when;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.sql.ResultSet;
+import java.sql.Timestamp;
+import java.time.LocalDateTime;
 import java.util.List;
 
+import com.example.training_platform.assignment.dto.AssignmentTaskResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -170,5 +175,70 @@ class AssignmentServiceTest {
         assertThat(result.id()).isEqualTo(9L);
         assertThat(result.fileName()).isEqualTo("lesson.pdf");
         verify(storageService, atLeastOnce()).root();
+    }
+
+    @Test
+    void updateTaskStatusBlockedWhenTransitionIsInvalid() throws Exception {
+        when(jdbcTemplate.queryForObject(contains("from trainee_curriculum_assignments"), eq(Integer.class), eq(100L), eq(11L)))
+                .thenReturn(1);
+        when(jdbcTemplate.query(contains("select status, started_at"), any(RowMapper.class), eq(200L), eq(100L)))
+                .thenAnswer(invocation -> {
+                    @SuppressWarnings("unchecked")
+                    RowMapper<Object> mapper = (RowMapper<Object>) invocation.getArgument(1);
+                    ResultSet rs = org.mockito.Mockito.mock(ResultSet.class);
+                    when(rs.getString("status")).thenReturn("DONE");
+                    when(rs.getTimestamp("started_at")).thenReturn(Timestamp.valueOf(LocalDateTime.now().minusDays(2)));
+                    return List.of(mapper.mapRow(rs, 0));
+                });
+
+        assertThatThrownBy(() -> assignmentService.updateTaskStatus(11L, 100L, 200L, "NOT_STARTED"))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void updateTaskStatusSuccessWhenTransitionIsValid() throws Exception {
+        when(jdbcTemplate.queryForObject(contains("from trainee_curriculum_assignments"), eq(Integer.class), eq(100L), eq(11L)))
+                .thenReturn(1);
+        when(jdbcTemplate.query(contains("select status, started_at"), any(RowMapper.class), eq(200L), eq(100L)))
+                .thenAnswer(invocation -> {
+                    @SuppressWarnings("unchecked")
+                    RowMapper<Object> mapper = (RowMapper<Object>) invocation.getArgument(1);
+                    ResultSet rs = org.mockito.Mockito.mock(ResultSet.class);
+                    when(rs.getString("status")).thenReturn("NOT_STARTED");
+                    when(rs.getTimestamp("started_at")).thenReturn(null);
+                    return List.of(mapper.mapRow(rs, 0));
+                });
+        when(jdbcTemplate.update(contains("update tasks"), eq("IN_PROGRESS"), any(), isNull(), eq(200L), eq(100L)))
+                .thenReturn(1);
+        when(jdbcTemplate.query(contains("from tasks t"), any(RowMapper.class), eq(200L), eq(100L)))
+                .thenAnswer(invocation -> {
+                    @SuppressWarnings("unchecked")
+                    RowMapper<AssignmentTaskResponse> mapper = (RowMapper<AssignmentTaskResponse>) invocation.getArgument(1);
+                    ResultSet rs = org.mockito.Mockito.mock(ResultSet.class);
+                    when(rs.getLong("id")).thenReturn(200L);
+                    when(rs.getLong("assignment_id")).thenReturn(100L);
+                    when(rs.getLong("task_template_id")).thenReturn(12L);
+                    when(rs.getInt("sort_order")).thenReturn(1);
+                    when(rs.getString("title")).thenReturn("Task A");
+                    when(rs.getString("description")).thenReturn("Desc");
+                    when(rs.getObject("estimated_days", Integer.class)).thenReturn(3);
+                    when(rs.getString("status")).thenReturn("IN_PROGRESS");
+                    Timestamp now = Timestamp.valueOf(LocalDateTime.now());
+                    when(rs.getTimestamp("started_at")).thenReturn(now);
+                    when(rs.getTimestamp("completed_at")).thenReturn(null);
+                    when(rs.getTimestamp("created_at")).thenReturn(now);
+                    when(rs.getTimestamp("updated_at")).thenReturn(now);
+                    when(rs.getLong("learning_material_id")).thenReturn(0L);
+                    when(rs.wasNull()).thenReturn(true);
+                    when(rs.getString("learning_material_file_name")).thenReturn(null);
+                    return List.of(mapper.mapRow(rs, 0));
+                });
+
+        AssignmentTaskResponse result = assignmentService.updateTaskStatus(11L, 100L, 200L, "IN_PROGRESS");
+
+        assertThat(result.id()).isEqualTo(200L);
+        assertThat(result.status()).isEqualTo("IN_PROGRESS");
     }
 }

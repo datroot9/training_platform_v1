@@ -56,6 +56,7 @@ const templateEditing = ref<TaskTemplateResponse | null>(null)
 const templateToDelete = ref<TaskTemplateResponse | null>(null)
 const templateTitle = ref('')
 const templateDescription = ref('')
+const templateEstimatedDays = ref<number | null>(null)
 const templateSortOrder = ref<number | null>(null)
 const templateMaterialId = ref<number | null>(null)
 const templateSubmitting = ref(false)
@@ -246,6 +247,7 @@ async function confirmDeleteMaterial(): Promise<void> {
 function resetTemplateForm(): void {
   templateTitle.value = ''
   templateDescription.value = ''
+  templateEstimatedDays.value = null
   templateSortOrder.value = null
   templateMaterialId.value = null
   templateEditing.value = null
@@ -262,6 +264,7 @@ function openEditTemplate(item: TaskTemplateResponse): void {
   templateEditing.value = item
   templateTitle.value = item.title
   templateDescription.value = item.description ?? ''
+  templateEstimatedDays.value = item.estimatedDays
   templateSortOrder.value = item.sortOrder
   templateMaterialId.value = item.learningMaterialId
   templateDialogVisible.value = true
@@ -276,6 +279,7 @@ async function submitTemplate(): Promise<void> {
       await mentorApi.createTaskTemplate(curriculumId.value, {
         title: templateTitle.value.trim(),
         description: templateDescription.value.trim() || undefined,
+        estimatedDays: templateEstimatedDays.value ?? undefined,
         sortOrder: templateSortOrder.value ?? undefined,
         learningMaterialId: templateMaterialId.value ?? undefined,
       })
@@ -289,6 +293,7 @@ async function submitTemplate(): Promise<void> {
       await mentorApi.updateTaskTemplate(curriculumId.value, templateEditing.value.id, {
         title: templateTitle.value.trim(),
         description: templateDescription.value.trim() || undefined,
+        estimatedDays: templateEstimatedDays.value ?? undefined,
         sortOrder: templateSortOrder.value ?? undefined,
         learningMaterialId: templateMaterialId.value,
       })
@@ -532,6 +537,11 @@ async function confirmCreateNewVersion(): Promise<void> {
 
             <DataTable :value="detail.taskTemplates" data-key="id" responsive-layout="scroll" class="p-datatable-sm">
               <Column field="title" header="Title" style="min-width: 14rem" />
+              <Column header="Estimate (days)" style="width: 9rem">
+                <template #body="{ data }">
+                  {{ data.estimatedDays ?? '-' }}
+                </template>
+              </Column>
               <Column field="sortOrder" header="Sort order" style="width: 8rem" />
               <Column header="Material link" style="min-width: 12rem">
                 <template #body="{ data }">
@@ -627,6 +637,10 @@ async function confirmCreateNewVersion(): Promise<void> {
       <label>
         Description
         <Textarea v-model="templateDescription" rows="3" auto-resize />
+      </label>
+      <label>
+        Estimated days (optional)
+        <InputNumber v-model="templateEstimatedDays" :min="1" :max="3650" :use-grouping="false" />
       </label>
       <label>
         Sort order (optional)

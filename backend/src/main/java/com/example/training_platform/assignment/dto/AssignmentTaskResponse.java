@@ -9,6 +9,7 @@ public record AssignmentTaskResponse(
         int sortOrder,
         String title,
         String description,
+        Integer estimatedDays,
         String status,
         LocalDateTime startedAt,
         LocalDateTime completedAt,
