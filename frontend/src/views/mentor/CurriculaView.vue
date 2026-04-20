@@ -4,7 +4,6 @@ import { useRouter } from 'vue-router'
 import Button from 'primevue/button'
 import Column from 'primevue/column'
 import DataTable from 'primevue/datatable'
-import Dialog from 'primevue/dialog'
 import IconField from 'primevue/iconfield'
 import InputIcon from 'primevue/inputicon'
 import InputText from 'primevue/inputtext'
@@ -12,7 +11,6 @@ import Message from 'primevue/message'
 import Paginator from 'primevue/paginator'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
-import Textarea from 'primevue/textarea'
 import Toast from 'primevue/toast'
 import { useToast } from 'primevue/usetoast'
 import { ApiError } from '../../api/client'
@@ -34,10 +32,6 @@ const statusFilter = ref<StatusFilter>('ALL')
 const first = ref(0)
 const pageRows = ref(8)
 
-const createDialogVisible = ref(false)
-const createName = ref('')
-const createDescription = ref('')
-const creating = ref(false)
 const rowPendingId = ref<number | null>(null)
 
 const statusOptions: Array<{ label: string; value: StatusFilter }> = [
@@ -120,35 +114,6 @@ async function resetFilters(): Promise<void> {
   await load()
 }
 
-function openCreateDialog(): void {
-  createName.value = ''
-  createDescription.value = ''
-  createDialogVisible.value = true
-}
-
-async function createCurriculum(): Promise<void> {
-  error.value = ''
-  creating.value = true
-  try {
-    await mentorApi.createCurriculum({
-      name: createName.value.trim(),
-      description: createDescription.value.trim(),
-    })
-    createDialogVisible.value = false
-    toast.add({
-      severity: 'success',
-      summary: 'Curriculum created',
-      detail: 'New curriculum is ready in draft mode.',
-      life: 3000,
-    })
-    await load()
-  } catch (e) {
-    error.value = e instanceof ApiError ? e.message : 'Create failed'
-  } finally {
-    creating.value = false
-  }
-}
-
 async function publishCurriculum(row: CurriculumResponse): Promise<void> {
   if (row.status !== 'DRAFT') return
   rowPendingId.value = row.id
@@ -173,7 +138,8 @@ function goDetail(row: CurriculumResponse): void {
   void router.push(`/mentor/curricula/${row.id}`)
 }
 
-function goWizard(): void {
+/** Primary create action: multi-step wizard (basics → PDFs → templates → publish). */
+function createCurriculum(): void {
   void router.push({ name: 'mentor-curriculum-wizard' })
 }
 
@@ -210,16 +176,7 @@ function onPageChange(event: { first: number; rows: number }): void {
           <Button icon="pi pi-search" label="Search" severity="secondary" outlined @click="search" />
           <Button icon="pi pi-times" label="Clear" severity="secondary" outlined @click="resetFilters" />
         </div>
-        <div class="table-tools-actions">
-          <Button
-            icon="pi pi-list-check"
-            label="Create with wizard"
-            severity="secondary"
-            outlined
-            @click="goWizard"
-          />
-          <Button icon="pi pi-plus" label="Create curriculum" @click="openCreateDialog" />
-        </div>
+        <Button icon="pi pi-plus" label="Create curriculum" @click="createCurriculum" />
       </div>
       <p class="table-count">All curricula: <strong>{{ summaryCount }}</strong></p>
 
@@ -289,23 +246,6 @@ function onPageChange(event: { first: number; rows: number }): void {
         />
       </div>
     </section>
-
-    <Dialog v-model:visible="createDialogVisible" modal header="Create curriculum" :style="{ width: '32rem' }">
-      <div class="dialog-form">
-        <label>
-          Name
-          <InputText v-model="createName" placeholder="e.g. Java Core Bootcamp" />
-        </label>
-        <label>
-          Description
-          <Textarea v-model="createDescription" rows="4" auto-resize />
-        </label>
-      </div>
-      <template #footer>
-        <Button label="Cancel" text @click="createDialogVisible = false" />
-        <Button label="Create" :loading="creating" :disabled="!createName.trim()" @click="createCurriculum" />
-      </template>
-    </Dialog>
   </div>
 </template>
 
@@ -329,13 +269,6 @@ function onPageChange(event: { first: number; rows: number }): void {
   flex-wrap: wrap;
   gap: 0.5rem;
   justify-content: space-between;
-  align-items: center;
-}
-
-.table-tools-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
   align-items: center;
 }
 
@@ -375,19 +308,6 @@ function onPageChange(event: { first: number; rows: number }): void {
   margin-top: 0.6rem;
   display: flex;
   justify-content: flex-end;
-}
-
-.dialog-form {
-  display: flex;
-  flex-direction: column;
-  gap: 0.8rem;
-}
-
-.dialog-form label {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  font-size: 0.9rem;
 }
 
 @media (max-width: 900px) {
