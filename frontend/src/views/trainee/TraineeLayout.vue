@@ -72,7 +72,7 @@ async function signOut(): Promise<void> {
 .layout {
   min-height: 100vh;
   display: block;
-  background: linear-gradient(135deg, #faf5ff 0%, #f8fafc 38%, #f1f5f9 100%);
+  background: linear-gradient(135deg, #f6f1ff 0%, #f8f8ff 34%, #edf2ff 100%);
 }
 
 .trainee-shell {
@@ -91,13 +91,14 @@ async function signOut(): Promise<void> {
 }
 
 .content {
-  padding: 1.25rem;
+  padding: 1.1rem 1.15rem;
   min-width: 0;
 }
 
 .left-rail {
-  border-right: 1px solid #e9d5ff;
-  background: rgba(255, 255, 255, 0.75);
+  border-right: 1px solid #ddd6fe;
+  background: rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(4px);
   padding: 1rem 0.9rem;
   overflow: auto;
   min-height: 0;
@@ -121,7 +122,8 @@ async function signOut(): Promise<void> {
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 6px 20px rgba(109, 40, 217, 0.35);
+  box-shadow: 0 10px 24px rgba(109, 40, 217, 0.32);
+  transition: transform var(--ui-transition-fast), box-shadow var(--ui-transition-fast);
 }
 
 .fab-ring {
@@ -139,6 +141,16 @@ async function signOut(): Promise<void> {
   font-weight: 800;
   color: #5b21b6;
   letter-spacing: -0.02em;
+}
+
+.fab-open:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 28px rgba(109, 40, 217, 0.32);
+}
+
+.fab-open:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.25), 0 14px 28px rgba(109, 40, 217, 0.28);
 }
 
 @media (max-width: 900px) {

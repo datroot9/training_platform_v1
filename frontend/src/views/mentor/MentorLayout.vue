@@ -30,7 +30,9 @@ async function signOut(): Promise<void> {
     />
 
     <main class="content">
-      <RouterView />
+      <section class="content-shell">
+        <RouterView />
+      </section>
     </main>
   </div>
 </template>
@@ -39,17 +41,26 @@ async function signOut(): Promise<void> {
 .layout {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 260px 1fr;
-  background: #f8fafc;
+  grid-template-columns: var(--ui-sidebar-width) 1fr;
+  background: var(--ui-bg-gradient);
 }
 
 .content {
-  padding: 1.25rem;
+  padding: 1.1rem 1.15rem;
+}
+
+.content-shell {
+  min-height: calc(100vh - 2.2rem);
+  padding: 0.2rem;
 }
 
 @media (max-width: 900px) {
   .layout {
     grid-template-columns: 1fr;
+  }
+
+  .content {
+    padding: 0.95rem;
   }
 }
 </style>

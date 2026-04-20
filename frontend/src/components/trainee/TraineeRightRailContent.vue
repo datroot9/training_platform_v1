@@ -74,7 +74,7 @@ function onLogout(): void {
 
 <template>
   <div class="rail-inner">
-    <div class="profile-block">
+    <div class="profile-block card">
       <div class="donut-wrap" aria-hidden="true">
         <div
           class="donut"
@@ -97,7 +97,7 @@ function onLogout(): void {
     <template v-else>
       <Message v-if="error" severity="error" :closable="false" class="msg">{{ error }}</Message>
 
-      <section v-if="hasAssignment" class="progress-block">
+      <section v-if="hasAssignment" class="progress-block card">
         <p class="section-label">Your progress</p>
         <p class="curriculum-name">{{ assignment!.curriculumName }}</p>
         <ProgressBar :value="progressPercent" :show-value="false" class="bar" />
@@ -108,12 +108,12 @@ function onLogout(): void {
         No active assignment yet. When your mentor assigns a curriculum, your progress will show here.
       </Message>
 
-      <section class="links">
+      <section class="links card">
         <p class="section-label">Quick links</p>
         <Button
           label="My assignment"
           icon="pi pi-bookmark"
-          class="w-full"
+          class="w-full primary-link-btn"
           outlined
           severity="secondary"
           @click="go('/trainee/assignment')"
@@ -121,7 +121,7 @@ function onLogout(): void {
         <Button
           label="Account security"
           icon="pi pi-shield"
-          class="w-full"
+          class="w-full secondary-link-btn"
           text
           @click="go('/account/change-password')"
         />
@@ -149,10 +149,16 @@ function onLogout(): void {
   height: 100%;
 }
 
+.card {
+  border: 1px solid #ddd6fe;
+  border-radius: var(--ui-radius-md);
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: var(--ui-shadow-sm);
+}
+
 .profile-block {
   text-align: center;
-  padding-bottom: 0.5rem;
-  border-bottom: 1px solid #ede9fe;
+  padding: 0.85rem 0.85rem 0.95rem;
 }
 
 .donut-wrap {
@@ -173,7 +179,7 @@ function onLogout(): void {
   width: 100%;
   height: 100%;
   border-radius: 50%;
-  background: #fff;
+  background: #fdfcff;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -195,7 +201,7 @@ function onLogout(): void {
 .sub {
   margin: 0.35rem 0 0;
   font-size: 0.82rem;
-  color: var(--text-muted);
+  color: var(--ui-text-secondary);
   line-height: 1.4;
 }
 
@@ -215,9 +221,6 @@ function onLogout(): void {
 }
 
 .progress-block {
-  background: #faf5ff;
-  border: 1px solid #ede9fe;
-  border-radius: 12px;
   padding: 0.85rem 1rem;
 }
 
@@ -225,7 +228,7 @@ function onLogout(): void {
   margin: 0 0 0.5rem;
   font-size: 0.92rem;
   font-weight: 600;
-  color: #334155;
+  color: var(--ui-text-primary);
   line-height: 1.35;
 }
 
@@ -236,13 +239,14 @@ function onLogout(): void {
 .progress-caption {
   margin: 0.45rem 0 0;
   font-size: 0.8rem;
-  color: var(--text-muted);
+  color: var(--ui-text-secondary);
 }
 
 .links {
   display: flex;
   flex-direction: column;
   gap: 0.45rem;
+  padding: 0.85rem 0.8rem 0.8rem;
 }
 
 .w-full {
@@ -261,5 +265,35 @@ function onLogout(): void {
 
 .logout-btn {
   margin-top: auto;
+}
+
+:deep(.bar .p-progressbar-value) {
+  background: linear-gradient(90deg, #7c3aed 0%, #4f46e5 100%);
+}
+
+:deep(.msg.p-message) {
+  border-radius: var(--ui-radius-md);
+}
+
+:deep(.primary-link-btn.p-button) {
+  border-color: #c4b5fd;
+  color: #5b21b6;
+}
+
+:deep(.primary-link-btn.p-button:hover) {
+  background: #f3e8ff;
+  border-color: #a78bfa;
+}
+
+:deep(.secondary-link-btn.p-button) {
+  color: #5b21b6;
+}
+
+:deep(.secondary-link-btn.p-button:hover) {
+  background: #f3e8ff;
+}
+
+:deep(.logout-btn.p-button) {
+  border-radius: 999px;
 }
 </style>

@@ -31,6 +31,31 @@
   --auth-radius-md: 10px;
   --auth-transition-fast: 140ms ease;
   --auth-transition-base: 200ms ease;
+  --ui-bg-page: #f5f7fb;
+  --ui-bg-gradient: linear-gradient(135deg, #f8f7ff 0%, #f5f7fb 36%, #eef2ff 100%);
+  --ui-surface: #ffffff;
+  --ui-surface-soft: #faf8ff;
+  --ui-border: #e5e7eb;
+  --ui-border-soft: #eceff5;
+  --ui-text-primary: #111827;
+  --ui-text-secondary: #6b7280;
+  --ui-heading: #312e81;
+  --ui-accent: #5624d0;
+  --ui-accent-strong: #4b1fb8;
+  --ui-accent-soft: #f3edff;
+  --ui-success-soft: #ecfdf3;
+  --ui-warn-soft: #fff7ed;
+  --ui-danger-soft: #fef2f2;
+  --ui-focus-ring: rgba(86, 36, 208, 0.22);
+  --ui-shadow-sm: 0 4px 14px rgba(15, 23, 42, 0.06);
+  --ui-shadow-md: 0 14px 34px rgba(30, 41, 59, 0.1);
+  --ui-shadow-lg: 0 22px 54px rgba(30, 41, 59, 0.14);
+  --ui-radius-sm: 10px;
+  --ui-radius-md: 14px;
+  --ui-radius-lg: 18px;
+  --ui-transition-fast: 130ms ease;
+  --ui-transition-base: 190ms ease;
+  --ui-sidebar-width: 270px;
 }
 
 * {
@@ -39,7 +64,8 @@
 
 body {
   margin: 0;
-  background: #f5f7fb;
+  background: var(--ui-bg-page);
+  color: var(--ui-text-primary);
 }
 
 a {
@@ -50,5 +76,7 @@ a {
   :root {
     --auth-transition-fast: 0ms linear;
     --auth-transition-base: 0ms linear;
+    --ui-transition-fast: 0ms linear;
+    --ui-transition-base: 0ms linear;
   }
 }

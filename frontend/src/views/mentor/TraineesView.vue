@@ -47,6 +47,8 @@ const actionMenu = ref()
 const actionMenuItems = ref<MenuItem[]>([])
 
 const summaryCount = computed(() => totalRecords.value)
+const activeRowsCount = computed(() => rows.value.filter((row) => row.active).length)
+const inactiveRowsCount = computed(() => rows.value.filter((row) => !row.active).length)
 
 const assignCurriculumResolved = computed(() => {
   if (assignVersionId.value == null) return null
@@ -338,25 +340,44 @@ function onPageChange(event: { first: number; rows: number }): void {
 
     <section class="table-shell">
       <div class="table-top">
-        <h2>All users <span>{{ summaryCount }}</span></h2>
-        <div class="toolbar">
-          <IconField>
-            <InputIcon class="pi pi-search" />
-            <InputText v-model="query" placeholder="Search" @keyup.enter="search" />
-          </IconField>
-          <Select
-            v-model="activeFilter"
-            :options="activeFilterOptions"
-            option-label="label"
-            option-value="value"
-            placeholder="Access status"
-            class="active-filter"
-          />
-          <Button icon="pi pi-search" label="Search" severity="secondary" outlined @click="search" />
-          <Button icon="pi pi-times" label="Clear" severity="secondary" outlined @click="resetFilters" />
-          <Button icon="pi pi-users" label="Bulk actions" severity="secondary" outlined @click="showBulkComingSoon" />
-          <Button icon="pi pi-plus" label="Add trainee" @click="createDialogVisible = true" />
+        <div class="title-block">
+          <p class="eyebrow">People management</p>
+          <h2>Trainee roster</h2>
+          <p class="support-copy">Monitor account access, reset credentials, and assign curriculum versions.</p>
         </div>
+        <div class="quick-stats">
+          <article class="stat-card">
+            <p class="stat-label">Total trainees</p>
+            <p class="stat-value">{{ summaryCount }}</p>
+          </article>
+          <article class="stat-card">
+            <p class="stat-label">Active on page</p>
+            <p class="stat-value">{{ activeRowsCount }}</p>
+          </article>
+          <article class="stat-card">
+            <p class="stat-label">Inactive on page</p>
+            <p class="stat-value">{{ inactiveRowsCount }}</p>
+          </article>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <IconField class="search-field">
+          <InputIcon class="pi pi-search" />
+          <InputText v-model="query" placeholder="Search by trainee name or email" @keyup.enter="search" />
+        </IconField>
+        <Select
+          v-model="activeFilter"
+          :options="activeFilterOptions"
+          option-label="label"
+          option-value="value"
+          placeholder="Access status"
+          class="active-filter"
+        />
+        <Button icon="pi pi-search" label="Search" severity="secondary" outlined @click="search" />
+        <Button icon="pi pi-times" label="Clear" severity="secondary" outlined @click="resetFilters" />
+        <Button icon="pi pi-users" label="Bulk actions" severity="secondary" outlined @click="showBulkComingSoon" />
+        <Button icon="pi pi-plus" label="Add trainee" @click="createDialogVisible = true" />
       </div>
 
       <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
@@ -365,7 +386,7 @@ function onPageChange(event: { first: number; rows: number }): void {
         :value="rows"
         data-key="id"
         :loading="loading"
-        class="p-datatable-sm"
+        class="p-datatable-sm trainees-table"
         responsive-layout="scroll"
       >
         <Column header="User" style="min-width: 16rem">
@@ -407,7 +428,8 @@ function onPageChange(event: { first: number; rows: number }): void {
               icon="pi pi-ellipsis-v"
               text
               rounded
-              severity="secondary"
+              severity="contrast"
+              class="row-action-btn"
               @click="openActionMenu($event, data)"
             />
           </template>
@@ -426,7 +448,13 @@ function onPageChange(event: { first: number; rows: number }): void {
       </div>
     </section>
 
-    <Dialog v-model:visible="createDialogVisible" modal header="Add trainee" :style="{ width: '28rem' }">
+    <Dialog
+      v-model:visible="createDialogVisible"
+      modal
+      header="Add trainee"
+      :style="{ width: '28rem' }"
+      class="modern-dialog"
+    >
       <div class="dialog-fields">
         <label>
           Email
@@ -443,7 +471,13 @@ function onPageChange(event: { first: number; rows: number }): void {
       </template>
     </Dialog>
 
-    <Dialog v-model:visible="assignDialogVisible" modal header="Assign curriculum" :style="{ width: '32rem' }">
+    <Dialog
+      v-model:visible="assignDialogVisible"
+      modal
+      header="Assign curriculum"
+      :style="{ width: '32rem' }"
+      class="modern-dialog"
+    >
       <div class="dialog-fields">
         <p class="muted">
           Assign curriculum for <strong>{{ assignTrainee?.fullName }}</strong>
@@ -495,47 +529,100 @@ function onPageChange(event: { first: number; rows: number }): void {
 .trainees-page {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 1.05rem;
 }
 
 .table-shell {
-  background: #fff;
-  border: 1px solid var(--brand-border-soft);
-  border-radius: 12px;
-  padding: 1rem;
+  background: linear-gradient(135deg, #ffffff 0%, #fdfcff 100%);
+  border: 1px solid var(--ui-border-soft);
+  border-radius: var(--ui-radius-lg);
+  box-shadow: var(--ui-shadow-md);
+  padding: 1rem 1rem 0.8rem;
 }
 
 .table-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: end;
+  margin-bottom: 0.95rem;
+}
+
+.title-block {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 0.75rem;
+  flex-direction: column;
+  gap: 0.25rem;
 }
 
-.table-top h2 {
+.title-block h2 {
   margin: 0;
-  font-size: 1.15rem;
+  font-size: 1.32rem;
+  color: var(--ui-heading);
 }
 
-.table-top h2 span {
-  color: var(--text-muted);
+.eyebrow {
+  margin: 0;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+  color: var(--ui-text-secondary);
+}
+
+.support-copy {
+  margin: 0;
+  color: var(--ui-text-secondary);
+  font-size: 0.9rem;
+}
+
+.quick-stats {
+  display: flex;
+  gap: 0.6rem;
+}
+
+.stat-card {
+  min-width: 7.5rem;
+  border: 1px solid var(--ui-border-soft);
+  background: var(--ui-surface-soft);
+  border-radius: var(--ui-radius-md);
+  padding: 0.55rem 0.7rem;
+}
+
+.stat-label {
+  margin: 0;
+  color: var(--ui-text-secondary);
+  font-size: 0.73rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-weight: 600;
+}
+
+.stat-value {
+  margin: 0.2rem 0 0;
+  font-size: 1.08rem;
+  font-weight: 700;
+  color: var(--ui-text-primary);
 }
 
 .toolbar {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: 0.55rem;
   align-items: center;
+  margin-bottom: 0.85rem;
+}
+
+.search-field {
+  min-width: min(100%, 20.5rem);
+  flex: 1 1 17rem;
 }
 
 .active-filter {
-  min-width: 11rem;
+  min-width: 10.7rem;
 }
 
 .table-footer {
-  margin-top: 0.6rem;
+  margin-top: 0.8rem;
   display: flex;
   justify-content: flex-end;
 }
@@ -543,17 +630,18 @@ function onPageChange(event: { first: number; rows: number }): void {
 .user-cell {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.72rem;
 }
 
 .name {
   margin: 0;
   font-weight: 600;
+  color: var(--ui-text-primary);
 }
 
 .email {
   margin: 0;
-  color: var(--text-muted);
+  color: var(--ui-text-secondary);
   font-size: 0.86rem;
 }
 
@@ -566,19 +654,21 @@ function onPageChange(event: { first: number; rows: number }): void {
 .dialog-fields {
   display: flex;
   flex-direction: column;
-  gap: 0.8rem;
+  gap: 0.85rem;
 }
 
 .dialog-fields label {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.42rem;
   font-size: 0.9rem;
+  color: var(--ui-text-primary);
+  font-weight: 600;
 }
 
 .muted {
   margin: 0;
-  color: var(--text-muted);
+  color: var(--ui-text-secondary);
 }
 
 .assign-field {
@@ -588,7 +678,57 @@ function onPageChange(event: { first: number; rows: number }): void {
   font-size: 0.9rem;
 }
 
+:deep(.trainees-table .p-datatable-thead > tr > th) {
+  background: #f8f9ff;
+  color: #4338ca;
+  border-color: #e6e9f8;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+:deep(.trainees-table .p-datatable-tbody > tr > td) {
+  border-color: #eef1f6;
+}
+
+:deep(.trainees-table .p-datatable-tbody > tr:hover) {
+  background: #fcfbff;
+}
+
+:deep(.trainees-table .p-avatar) {
+  background: #ede9fe;
+  color: #5b21b6;
+  font-weight: 700;
+}
+
+:deep(.row-action-btn.p-button) {
+  color: #5b21b6;
+}
+
+:deep(.row-action-btn.p-button:hover) {
+  background: #f3e8ff;
+}
+
+:deep(.modern-dialog .p-dialog-header) {
+  background: #fcfbff;
+  border-bottom: 1px solid var(--ui-border-soft);
+}
+
+:deep(.modern-dialog .p-dialog-content) {
+  padding-top: 1rem;
+}
+
 @media (max-width: 900px) {
+  .table-top {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .quick-stats {
+    overflow-x: auto;
+    padding-bottom: 0.25rem;
+  }
+
   .table-footer {
     justify-content: center;
   }
