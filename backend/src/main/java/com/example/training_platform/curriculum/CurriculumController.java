@@ -4,6 +4,7 @@ import com.example.training_platform.auth.AuthenticatedUser;
 import com.example.training_platform.common.dto.ApiResponse;
 import com.example.training_platform.common.dto.PagedResponse;
 import com.example.training_platform.curriculum.dto.CreateCurriculumRequest;
+import com.example.training_platform.curriculum.dto.CreateCurriculumVersionRequest;
 import com.example.training_platform.curriculum.dto.CreateTaskTemplateRequest;
 import com.example.training_platform.curriculum.dto.CurriculumDetailResponse;
 import com.example.training_platform.curriculum.dto.CurriculumResponse;
@@ -66,7 +67,7 @@ public class CurriculumController {
             @RequestParam(value = "page", required = false) Integer page,
             @Parameter(description = "Page size (max 100)")
             @RequestParam(value = "size", required = false) Integer size,
-            @Parameter(description = "Sort field: updatedAt, createdAt, name, status, publishedAt")
+            @Parameter(description = "Sort field: updatedAt, createdAt, name, status, publishedAt, versionLabel")
             @RequestParam(value = "sortBy", required = false) String sortBy,
             @Parameter(description = "Sort direction: asc or desc")
             @RequestParam(value = "sortDir", required = false) String sortDir) {
@@ -116,7 +117,11 @@ public class CurriculumController {
     }
 
     @DeleteMapping("/{id}/materials/{materialId}")
-    @Operation(summary = "Delete a learning material and its stored file (DRAFT only)")
+    @Operation(
+            summary = "Delete a learning material row (DRAFT only)",
+            description = "Removes the row for this curriculum. The PDF file on disk is deleted only when no other "
+                    + "learning_material row (including other curriculum versions) still references the same storage_path."
+    )
     public ResponseEntity<ApiResponse<Void>> deleteMaterial(Authentication authentication,
                                                             @PathVariable("id") Long curriculumId,
                                                             @PathVariable("materialId") Long materialId) {
@@ -156,6 +161,23 @@ public class CurriculumController {
         AuthenticatedUser current = (AuthenticatedUser) authentication.getPrincipal();
         curriculumService.deleteTaskTemplate(current.userId(), curriculumId, templateId);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Task template deleted", null));
+    }
+
+    @PostMapping("/{id}/versions")
+    @Operation(
+            summary = "Create a new draft version from a published curriculum",
+            description = """
+                    Copies task templates and learning_material rows into a new DRAFT curriculum in the same \
+                    curriculum family (curriculumGroupId). PDF files are shared via the same storage_path; deleting \
+                    a material in one draft only removes the file from disk when no row still references that path."""
+    )
+    public ResponseEntity<ApiResponse<CurriculumResponse>> createVersion(Authentication authentication,
+                                                                         @PathVariable("id") Long sourceCurriculumId,
+                                                                         @Valid @RequestBody CreateCurriculumVersionRequest request) {
+        AuthenticatedUser current = (AuthenticatedUser) authentication.getPrincipal();
+        CurriculumResponse data = curriculumService.forkPublishedVersion(current.userId(), sourceCurriculumId, request);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success(HttpStatus.CREATED.value(), "Curriculum version created", data));
     }
 
     @PostMapping("/{id}/publish")

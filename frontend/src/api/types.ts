@@ -52,6 +52,8 @@ export interface CreateTraineeResponse {
 
 export interface CurriculumResponse {
   id: number
+  curriculumGroupId: number
+  versionLabel: string
   name: string
   description: string
   status: string

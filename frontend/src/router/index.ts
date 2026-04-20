@@ -25,6 +25,11 @@ const router = createRouter({
         { path: 'trainees', name: 'mentor-trainees', component: () => import('../views/mentor/TraineesView.vue') },
         { path: 'curricula', name: 'mentor-curricula', component: () => import('../views/mentor/CurriculaView.vue') },
         {
+          path: 'curricula/wizard',
+          name: 'mentor-curriculum-wizard',
+          component: () => import('../views/mentor/CurriculumWizardView.vue'),
+        },
+        {
           path: 'curricula/:id',
           name: 'mentor-curriculum-detail',
           component: () => import('../views/mentor/CurriculumDetailView.vue'),

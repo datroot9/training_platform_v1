@@ -35,6 +35,19 @@ public class AssignmentService {
         String curriculumName = assertPublishedCurriculumOwnedByMentor(mentorId, curriculumId);
         assertNoActiveAssignment(traineeId);
 
+        return createActiveAssignment(mentorId, traineeId, curriculumId, curriculumName);
+    }
+
+    @Transactional
+    public AssignmentResponse replaceActiveAssignment(Long mentorId, Long traineeId, Long curriculumId) {
+        assertTraineeBelongsToMentor(mentorId, traineeId);
+        String curriculumName = assertPublishedCurriculumOwnedByMentor(mentorId, curriculumId);
+        cancelActiveAssignment(traineeId);
+        return createActiveAssignment(mentorId, traineeId, curriculumId, curriculumName);
+    }
+
+    private AssignmentResponse createActiveAssignment(Long mentorId, Long traineeId, Long curriculumId, String curriculumName) {
+
         try {
             jdbcTemplate.update(
                     """
@@ -92,6 +105,21 @@ public class AssignmentService {
                         null,
                         templates.size()
                 ));
+    }
+
+    private void cancelActiveAssignment(Long traineeId) {
+        int updated = jdbcTemplate.update(
+                """
+                update trainee_curriculum_assignments
+                set status = 'CANCELLED', ended_at = CURRENT_TIMESTAMP
+                where trainee_id = ?
+                  and status = 'ACTIVE'
+                """,
+                traineeId
+        );
+        if (updated == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No active assignment to replace");
+        }
     }
 
     public AssignmentResponse getActiveAssignment(Long traineeId) {

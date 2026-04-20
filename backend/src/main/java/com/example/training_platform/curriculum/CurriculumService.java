@@ -4,12 +4,15 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 
 import com.example.training_platform.common.dto.PagedResponse;
 import com.example.training_platform.curriculum.dto.CreateCurriculumRequest;
+import com.example.training_platform.curriculum.dto.CreateCurriculumVersionRequest;
 import com.example.training_platform.curriculum.dto.CreateTaskTemplateRequest;
 import com.example.training_platform.curriculum.dto.CurriculumDetailResponse;
 import com.example.training_platform.curriculum.dto.CurriculumResponse;
@@ -22,6 +25,7 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -41,17 +45,22 @@ public class CurriculumService {
         this.pdfStorage = pdfStorage;
     }
 
+    @Transactional
     public CurriculumResponse create(Long mentorId, CreateCurriculumRequest request) {
         jdbcTemplate.update(
                 """
-                insert into curricula (name, description, created_by, status)
-                values (?, ?, ?, 'DRAFT')
+                insert into curricula (name, description, created_by, status, version_label)
+                values (?, ?, ?, 'DRAFT', '1.0')
                 """,
                 request.name(),
                 request.description(),
                 mentorId
         );
         Long id = jdbcTemplate.queryForObject("select last_insert_id()", Long.class);
+        if (id == null) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to create curriculum");
+        }
+        jdbcTemplate.update("update curricula set curriculum_group_id = ? where id = ?", id, id);
         return loadCurriculumResponse(mentorId, id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to load curriculum"));
     }
@@ -103,7 +112,7 @@ public class CurriculumService {
 
         String listSql =
                 """
-                select id, name, description, status, published_at, created_at, updated_at
+                select id, curriculum_group_id, version_label, name, description, status, published_at, created_at, updated_at
                 """
                         + whereClause +
                         " order by " + safeSortBy + " " + safeSortDir + " limit ? offset ?";
@@ -159,6 +168,159 @@ public class CurriculumService {
         }
         return loadCurriculumResponse(mentorId, curriculumId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Curriculum not found"));
+    }
+
+    @Transactional
+    public CurriculumResponse forkPublishedVersion(Long mentorId, Long sourceCurriculumId, CreateCurriculumVersionRequest request) {
+        String normalizedVersion = request.versionLabel().trim();
+        if (normalizedVersion.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "versionLabel is required");
+        }
+
+        List<SourceCurriculumRow> headRows = jdbcTemplate.query(
+                """
+                select curriculum_group_id, name, description, status
+                from curricula
+                where id = ? and created_by = ?
+                """,
+                (rs, i) -> new SourceCurriculumRow(
+                        rs.getLong("curriculum_group_id"),
+                        rs.getString("name"),
+                        rs.getString("description"),
+                        rs.getString("status")
+                ),
+                sourceCurriculumId,
+                mentorId
+        );
+        if (headRows.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Curriculum not found");
+        }
+        SourceCurriculumRow source = headRows.get(0);
+        if (!"PUBLISHED".equals(source.status())) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Only published curricula can be branched into a new draft version"
+            );
+        }
+
+        Integer dup = jdbcTemplate.queryForObject(
+                """
+                select count(*) from curricula
+                where curriculum_group_id = ? and version_label = ?
+                """,
+                Integer.class,
+                source.groupId(),
+                normalizedVersion
+        );
+        if (dup != null && dup > 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "This version label already exists for this curriculum family");
+        }
+
+        String newName = request.name() != null && !request.name().isBlank() ? request.name().trim() : source.name();
+        String newDescription = request.description() != null ? request.description() : source.description();
+
+        try {
+            jdbcTemplate.update(
+                    """
+                    insert into curricula (name, description, created_by, status, curriculum_group_id, version_label)
+                    values (?, ?, ?, 'DRAFT', ?, ?)
+                    """,
+                    newName,
+                    newDescription,
+                    mentorId,
+                    source.groupId(),
+                    normalizedVersion
+            );
+        } catch (DuplicateKeyException e) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "This version label already exists for this curriculum family");
+        }
+        Long newCurriculumId = jdbcTemplate.queryForObject("select last_insert_id()", Long.class);
+        if (newCurriculumId == null) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to create curriculum version");
+        }
+
+        List<MaterialCopyRow> materials = jdbcTemplate.query(
+                """
+                select id, sort_order, file_name, storage_path, file_size_bytes, uploaded_at
+                from learning_materials
+                where curriculum_id = ?
+                order by sort_order asc, id asc
+                """,
+                (rs, i) -> new MaterialCopyRow(
+                        rs.getLong("id"),
+                        rs.getInt("sort_order"),
+                        rs.getString("file_name"),
+                        rs.getString("storage_path"),
+                        rs.getLong("file_size_bytes"),
+                        rs.getTimestamp("uploaded_at")
+                ),
+                sourceCurriculumId
+        );
+
+        Map<Long, Long> oldMaterialIdToNew = new LinkedHashMap<>();
+        for (MaterialCopyRow m : materials) {
+            jdbcTemplate.update(
+                    """
+                    insert into learning_materials (curriculum_id, sort_order, file_name, storage_path, file_size_bytes, uploaded_at)
+                    values (?, ?, ?, ?, ?, ?)
+                    """,
+                    newCurriculumId,
+                    m.sortOrder(),
+                    m.fileName(),
+                    m.storagePath(),
+                    m.fileSizeBytes(),
+                    m.uploadedAt()
+            );
+            Long newMaterialId = jdbcTemplate.queryForObject("select last_insert_id()", Long.class);
+            if (newMaterialId == null) {
+                throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to copy learning material");
+            }
+            oldMaterialIdToNew.put(m.oldId(), newMaterialId);
+        }
+
+        List<TemplateCopyRow> templates = jdbcTemplate.query(
+                """
+                select learning_material_id, sort_order, title, description
+                from task_templates
+                where curriculum_id = ?
+                order by sort_order asc, id asc
+                """,
+                (rs, i) -> {
+                    long lm = rs.getLong("learning_material_id");
+                    boolean lmNull = rs.wasNull();
+                    return new TemplateCopyRow(
+                            lmNull ? null : lm,
+                            rs.getInt("sort_order"),
+                            rs.getString("title"),
+                            rs.getString("description")
+                    );
+                },
+                sourceCurriculumId
+        );
+
+        for (TemplateCopyRow t : templates) {
+            Long newLm = t.oldLearningMaterialId() == null ? null : oldMaterialIdToNew.get(t.oldLearningMaterialId());
+            if (t.oldLearningMaterialId() != null && newLm == null) {
+                throw new ResponseStatusException(
+                        HttpStatus.INTERNAL_SERVER_ERROR,
+                        "Task template referenced a learning material that was not copied"
+                );
+            }
+            jdbcTemplate.update(
+                    """
+                    insert into task_templates (curriculum_id, learning_material_id, sort_order, title, description)
+                    values (?, ?, ?, ?, ?)
+                    """,
+                    newCurriculumId,
+                    newLm,
+                    t.sortOrder(),
+                    t.title(),
+                    t.description()
+            );
+        }
+
+        return loadCurriculumResponse(mentorId, newCurriculumId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to load new curriculum version"));
     }
 
     public LearningMaterialResponse addMaterial(Long mentorId, Long curriculumId, MultipartFile file, Integer sortOrder) {
@@ -226,8 +388,16 @@ public class CurriculumService {
         if (paths.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Material not found");
         }
+        String storagePath = paths.get(0);
         jdbcTemplate.update("delete from learning_materials where id = ? and curriculum_id = ?", materialId, curriculumId);
-        pdfStorage.deleteIfExists(paths.get(0));
+        Integer remaining = jdbcTemplate.queryForObject(
+                "select count(*) from learning_materials where storage_path = ?",
+                Integer.class,
+                storagePath
+        );
+        if (remaining == null || remaining == 0) {
+            pdfStorage.deleteIfExists(storagePath);
+        }
     }
 
     public TaskTemplateResponse createTaskTemplate(Long mentorId, Long curriculumId, CreateTaskTemplateRequest request) {
@@ -421,7 +591,7 @@ public class CurriculumService {
     private java.util.Optional<CurriculumResponse> loadCurriculumResponse(Long mentorId, Long curriculumId) {
         List<CurriculumResponse> rows = jdbcTemplate.query(
                 """
-                select id, name, description, status, published_at, created_at, updated_at
+                select id, curriculum_group_id, version_label, name, description, status, published_at, created_at, updated_at
                 from curricula
                 where id = ? and created_by = ?
                 """,
@@ -438,6 +608,8 @@ public class CurriculumService {
         Timestamp updated = rs.getTimestamp("updated_at");
         return new CurriculumResponse(
                 rs.getLong("id"),
+                rs.getLong("curriculum_group_id"),
+                rs.getString("version_label"),
                 rs.getString("name"),
                 rs.getString("description"),
                 rs.getString("status"),
@@ -567,6 +739,7 @@ public class CurriculumService {
             case "created_at", "createdAt" -> "created_at";
             case "published_at", "publishedAt" -> "published_at";
             case "updated_at", "updatedAt" -> "updated_at";
+            case "version_label", "versionLabel" -> "version_label";
             default -> "updated_at";
         };
     }
@@ -576,5 +749,15 @@ public class CurriculumService {
             return "desc";
         }
         return "asc".equals(sortDir.trim().toLowerCase(Locale.ROOT)) ? "asc" : "desc";
+    }
+
+    private record SourceCurriculumRow(long groupId, String name, String description, String status) {
+    }
+
+    private record MaterialCopyRow(long oldId, int sortOrder, String fileName, String storagePath, long fileSizeBytes,
+                                   Timestamp uploadedAt) {
+    }
+
+    private record TemplateCopyRow(Long oldLearningMaterialId, int sortOrder, String title, String description) {
     }
 }

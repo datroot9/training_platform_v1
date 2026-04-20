@@ -173,6 +173,10 @@ function goDetail(row: CurriculumResponse): void {
   void router.push(`/mentor/curricula/${row.id}`)
 }
 
+function goWizard(): void {
+  void router.push({ name: 'mentor-curriculum-wizard' })
+}
+
 function onPageChange(event: { first: number; rows: number }): void {
   first.value = event.first
   pageRows.value = event.rows
@@ -206,7 +210,16 @@ function onPageChange(event: { first: number; rows: number }): void {
           <Button icon="pi pi-search" label="Search" severity="secondary" outlined @click="search" />
           <Button icon="pi pi-times" label="Clear" severity="secondary" outlined @click="resetFilters" />
         </div>
-        <Button icon="pi pi-plus" label="Create curriculum" @click="openCreateDialog" />
+        <div class="table-tools-actions">
+          <Button
+            icon="pi pi-list-check"
+            label="Create with wizard"
+            severity="secondary"
+            outlined
+            @click="goWizard"
+          />
+          <Button icon="pi pi-plus" label="Create curriculum" @click="openCreateDialog" />
+        </div>
       </div>
       <p class="table-count">All curricula: <strong>{{ summaryCount }}</strong></p>
 
@@ -226,6 +239,12 @@ function onPageChange(event: { first: number; rows: number }): void {
             <div>
               <p class="name">{{ data.name }}</p>
             </div>
+          </template>
+        </Column>
+
+        <Column header="Version" style="width: 7rem">
+          <template #body="{ data }">
+            <span class="version-cell">{{ data.versionLabel }}</span>
           </template>
         </Column>
 
@@ -313,6 +332,13 @@ function onPageChange(event: { first: number; rows: number }): void {
   align-items: center;
 }
 
+.table-tools-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
 .table-tools-left {
   display: flex;
   flex-wrap: wrap;
@@ -332,6 +358,11 @@ function onPageChange(event: { first: number; rows: number }): void {
 .name {
   margin: 0;
   font-weight: 600;
+}
+
+.version-cell {
+  font-family: ui-monospace, monospace;
+  font-size: 0.85rem;
 }
 
 .actions {

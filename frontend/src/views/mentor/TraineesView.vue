@@ -37,6 +37,7 @@ const createEmail = ref('')
 const createName = ref('')
 const assignTrainee = ref<TraineeResponse | null>(null)
 const assignCurriculum = ref<CurriculumResponse | null>(null)
+const assignMode = ref<'assign' | 'replace'>('assign')
 
 const first = ref(0)
 const pageRows = ref(8)
@@ -194,22 +195,46 @@ async function resetPassword(row: TraineeResponse): Promise<void> {
 function openAssignDialog(row: TraineeResponse): void {
   assignTrainee.value = row
   assignCurriculum.value = curricula.value[0] ?? null
+  assignMode.value = 'assign'
   assignDialogVisible.value = true
+}
+
+function closeAssignDialog(): void {
+  assignDialogVisible.value = false
+  assignMode.value = 'assign'
 }
 
 async function confirmAssign(): Promise<void> {
   if (!assignTrainee.value || !assignCurriculum.value) return
   error.value = ''
   try {
-    await mentorApi.assignCurriculum(assignTrainee.value.id, assignCurriculum.value.id)
+    if (assignMode.value === 'replace') {
+      await mentorApi.replaceActiveAssignment(assignTrainee.value.id, assignCurriculum.value.id)
+    } else {
+      await mentorApi.assignCurriculum(assignTrainee.value.id, assignCurriculum.value.id)
+    }
     assignDialogVisible.value = false
+    const actionLabel = assignMode.value === 'replace' ? 'Curriculum replaced' : 'Curriculum assigned'
+    const actionVerb = assignMode.value === 'replace' ? 'replaced for' : 'assigned to'
+    assignMode.value = 'assign'
     toast.add({
       severity: 'success',
-      summary: 'Curriculum assigned',
-      detail: `${assignCurriculum.value.name} assigned to ${assignTrainee.value.fullName}.`,
+      summary: actionLabel,
+      detail: `${assignCurriculum.value.name} ${actionVerb} ${assignTrainee.value.fullName}.`,
       life: 3500,
     })
   } catch (e) {
+    if (e instanceof ApiError && e.httpStatus === 409 && assignMode.value === 'assign') {
+      error.value = ''
+      assignMode.value = 'replace'
+      toast.add({
+        severity: 'warn',
+        summary: 'Active assignment exists',
+        detail: 'Confirm Replace to cancel current assignment and apply the selected curriculum.',
+        life: 4500,
+      })
+      return
+    }
     error.value = e instanceof ApiError ? e.message : 'Assign failed'
   }
 }
@@ -373,6 +398,10 @@ function onPageChange(event: { first: number; rows: number }): void {
         <p class="muted">
           Assign curriculum for <strong>{{ assignTrainee?.fullName }}</strong>
         </p>
+        <Message v-if="assignMode === 'replace'" severity="warn" :closable="false">
+          This trainee already has an active assignment. Click <strong>Replace</strong> to cancel the current one and
+          regenerate tasks from the selected curriculum.
+        </Message>
         <Select
           v-model="assignCurriculum"
           :options="curricula"
@@ -382,8 +411,13 @@ function onPageChange(event: { first: number; rows: number }): void {
         />
       </div>
       <template #footer>
-        <Button label="Cancel" text @click="assignDialogVisible = false" />
-        <Button label="Assign" @click="confirmAssign" :disabled="!assignCurriculum || !assignTrainee" />
+        <Button label="Cancel" text @click="closeAssignDialog" />
+        <Button
+          :label="assignMode === 'replace' ? 'Replace' : 'Assign'"
+          :severity="assignMode === 'replace' ? 'warn' : undefined"
+          @click="confirmAssign"
+          :disabled="!assignCurriculum || !assignTrainee"
+        />
       </template>
     </Dialog>
 

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import Button from 'primevue/button'
 import Column from 'primevue/column'
 import DataTable from 'primevue/datatable'
@@ -23,6 +23,7 @@ import type { CurriculumDetailResponse, LearningMaterialResponse, TaskTemplateRe
 import PageHeader from '../../components/layout/PageHeader.vue'
 
 const route = useRoute()
+const router = useRouter()
 const toast = useToast()
 const curriculumId = computed(() => Number(route.params.id))
 const activeTab = ref('overview')
@@ -55,6 +56,12 @@ const templateSubmitting = ref(false)
 
 const publishDialogVisible = ref(false)
 const publishSubmitting = ref(false)
+
+const newVersionDialogVisible = ref(false)
+const newVersionLabel = ref('')
+const newVersionName = ref('')
+const newVersionDescription = ref('')
+const newVersionSubmitting = ref(false)
 
 const isPublished = computed(() => detail.value?.curriculum.status === 'PUBLISHED')
 const hasMaterials = computed(() => (detail.value?.materials.length ?? 0) > 0)
@@ -313,6 +320,41 @@ async function confirmPublish(): Promise<void> {
     publishSubmitting.value = false
   }
 }
+
+function openNewVersionDialog(): void {
+  if (!detail.value || !isPublished.value) return
+  newVersionLabel.value = ''
+  newVersionName.value = detail.value.curriculum.name
+  newVersionDescription.value = detail.value.curriculum.description ?? ''
+  newVersionDialogVisible.value = true
+}
+
+async function confirmCreateNewVersion(): Promise<void> {
+  if (!detail.value || !isPublished.value) return
+  const label = newVersionLabel.value.trim()
+  if (!label) return
+  error.value = ''
+  newVersionSubmitting.value = true
+  try {
+    const created = await mentorApi.createCurriculumVersion(curriculumId.value, {
+      versionLabel: label,
+      name: newVersionName.value.trim() || undefined,
+      description: newVersionDescription.value,
+    })
+    newVersionDialogVisible.value = false
+    toast.add({
+      severity: 'success',
+      summary: 'Draft version created',
+      detail: `Opening version ${created.versionLabel}.`,
+      life: 2800,
+    })
+    await router.push(`/mentor/curricula/${created.id}`)
+  } catch (e) {
+    error.value = e instanceof ApiError ? e.message : 'Could not create new version'
+  } finally {
+    newVersionSubmitting.value = false
+  }
+}
 </script>
 
 <template>
@@ -344,7 +386,8 @@ async function confirmPublish(): Promise<void> {
 
       <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
       <Message v-if="isPublished" severity="info" :closable="false">
-        This curriculum is already published. Editing actions are locked.
+        This curriculum is published (version {{ detail.curriculum.versionLabel }}, family id
+        {{ detail.curriculum.curriculumGroupId }}). Editing is locked; create a new draft version to change content.
       </Message>
 
       <Tabs v-model:value="activeTab">
@@ -481,6 +524,21 @@ async function confirmPublish(): Promise<void> {
                 @click="askPublish"
               />
             </div>
+            <template v-if="isPublished">
+              <h3 class="versioning-heading">New version</h3>
+              <p class="versioning-copy">
+                Create a draft copy that shares the same PDF files on disk as this published version. Use a unique
+                version label within this curriculum family (for example 1.1 or 2026-Q2).
+              </p>
+              <div class="actions">
+                <Button
+                  label="Create new draft version"
+                  icon="pi pi-copy"
+                  outlined
+                  @click="openNewVersionDialog"
+                />
+              </div>
+            </template>
             </section>
           </TabPanel>
         </TabPanels>
@@ -568,6 +626,38 @@ async function confirmPublish(): Promise<void> {
         :loading="publishSubmitting"
         :disabled="!publishReady"
         @click="confirmPublish"
+      />
+    </template>
+  </Dialog>
+
+  <Dialog
+    v-model:visible="newVersionDialogVisible"
+    modal
+    header="Create new draft version"
+    :style="{ width: '32rem' }"
+  >
+    <div class="dialog-form">
+      <label>
+        Version label (required)
+        <InputText v-model="newVersionLabel" placeholder="e.g. 1.1 or 2026-Q2" />
+      </label>
+      <label>
+        Name (optional)
+        <InputText v-model="newVersionName" placeholder="Defaults to current curriculum name" />
+      </label>
+      <label>
+        Description (optional)
+        <Textarea v-model="newVersionDescription" rows="3" auto-resize />
+      </label>
+    </div>
+    <template #footer>
+      <Button label="Cancel" text @click="newVersionDialogVisible = false" />
+      <Button
+        label="Create draft"
+        icon="pi pi-check"
+        :loading="newVersionSubmitting"
+        :disabled="!newVersionLabel.trim()"
+        @click="confirmCreateNewVersion"
       />
     </template>
   </Dialog>
@@ -665,6 +755,18 @@ async function confirmPublish(): Promise<void> {
 
 .bad {
   color: #dc2626;
+}
+
+.versioning-heading {
+  margin: 1rem 0 0.35rem;
+  font-size: 1rem;
+}
+
+.versioning-copy {
+  margin: 0 0 0.5rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1.45;
 }
 
 .dialog-form {

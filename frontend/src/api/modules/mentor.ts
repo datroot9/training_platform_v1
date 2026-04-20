@@ -28,7 +28,7 @@ type ListCurriculaParams = {
   status?: CurriculumStatus
   page?: number
   size?: number
-  sortBy?: 'updatedAt' | 'createdAt' | 'name' | 'status' | 'publishedAt'
+  sortBy?: 'updatedAt' | 'createdAt' | 'name' | 'status' | 'publishedAt' | 'versionLabel'
   sortDir?: SortDirection
 }
 
@@ -80,6 +80,13 @@ export async function resetTraineePassword(traineeId: number): Promise<{
 export async function assignCurriculum(traineeId: number, curriculumId: number): Promise<AssignmentResponse> {
   return requestJson<AssignmentResponse>(`/api/mentor/trainees/${traineeId}/assignments`, {
     method: 'POST',
+    body: JSON.stringify({ curriculumId }),
+  })
+}
+
+export async function replaceActiveAssignment(traineeId: number, curriculumId: number): Promise<AssignmentResponse> {
+  return requestJson<AssignmentResponse>(`/api/mentor/trainees/${traineeId}/assignments/active`, {
+    method: 'PUT',
     body: JSON.stringify({ curriculumId }),
   })
 }
@@ -186,5 +193,15 @@ export async function deleteTaskTemplate(curriculumId: number, templateId: numbe
 export async function publishCurriculum(curriculumId: number): Promise<CurriculumResponse> {
   return requestJson<CurriculumResponse>(`/api/mentor/curricula/${curriculumId}/publish`, {
     method: 'POST',
+  })
+}
+
+export async function createCurriculumVersion(
+  sourceCurriculumId: number,
+  body: { versionLabel: string; name?: string; description?: string },
+): Promise<CurriculumResponse> {
+  return requestJson<CurriculumResponse>(`/api/mentor/curricula/${sourceCurriculumId}/versions`, {
+    method: 'POST',
+    body: JSON.stringify(body),
   })
 }

@@ -85,6 +85,54 @@ class AssignmentServiceTest {
     }
 
     @Test
+    void replaceActiveAssignmentSuccessWhenCurrentActiveExists() {
+        when(jdbcTemplate.queryForObject(contains("from users"), eq(Integer.class), eq(11L), eq(5L))).thenReturn(1);
+        when(jdbcTemplate.query(contains("from curricula"), any(RowMapper.class), eq(22L), eq(5L)))
+                .thenReturn(List.of("Published Curriculum"));
+        when(jdbcTemplate.update(contains("set status = 'CANCELLED'"), eq(11L))).thenReturn(1);
+        when(jdbcTemplate.update(contains("insert into trainee_curriculum_assignments"), eq(11L), eq(22L), eq(5L)))
+                .thenReturn(1);
+        when(jdbcTemplate.queryForObject("select last_insert_id()", Long.class)).thenReturn(101L);
+        when(jdbcTemplate.query(contains("from task_templates"), any(RowMapper.class), eq(22L)))
+                .thenReturn(List.of());
+        when(jdbcTemplate.query(contains("from trainee_curriculum_assignments a"), any(RowMapper.class), eq(101L), eq(11L)))
+                .thenReturn(List.of());
+
+        var result = assignmentService.replaceActiveAssignment(5L, 11L, 22L);
+
+        assertThat(result.id()).isEqualTo(101L);
+        assertThat(result.traineeId()).isEqualTo(11L);
+        assertThat(result.curriculumId()).isEqualTo(22L);
+        assertThat(result.curriculumName()).isEqualTo("Published Curriculum");
+        assertThat(result.status()).isEqualTo("ACTIVE");
+    }
+
+    @Test
+    void replaceActiveAssignmentBlockedWhenNoActiveAssignment() {
+        when(jdbcTemplate.queryForObject(contains("from users"), eq(Integer.class), eq(11L), eq(5L))).thenReturn(1);
+        when(jdbcTemplate.query(contains("from curricula"), any(RowMapper.class), eq(22L), eq(5L)))
+                .thenReturn(List.of("Published Curriculum"));
+        when(jdbcTemplate.update(contains("set status = 'CANCELLED'"), eq(11L))).thenReturn(0);
+
+        assertThatThrownBy(() -> assignmentService.replaceActiveAssignment(5L, 11L, 22L))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void replaceActiveAssignmentBlockedWhenCurriculumInvalid() {
+        when(jdbcTemplate.queryForObject(contains("from users"), eq(Integer.class), eq(11L), eq(5L))).thenReturn(1);
+        when(jdbcTemplate.query(contains("from curricula"), any(RowMapper.class), eq(22L), eq(5L)))
+                .thenReturn(List.of());
+
+        assertThatThrownBy(() -> assignmentService.replaceActiveAssignment(5L, 11L, 22L))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
     void loadMaterialBlockedWhenNotOwnedByActiveAssignment() {
         when(jdbcTemplate.query(contains("from learning_materials lm"), any(RowMapper.class), eq(9L), eq(11L)))
                 .thenReturn(List.of());

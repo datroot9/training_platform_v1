@@ -4,6 +4,8 @@ import java.time.LocalDateTime;
 
 public record CurriculumResponse(
         Long id,
+        Long curriculumGroupId,
+        String versionLabel,
         String name,
         String description,
         String status,

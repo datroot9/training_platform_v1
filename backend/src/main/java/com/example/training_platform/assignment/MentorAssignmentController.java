@@ -13,6 +13,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -40,5 +41,19 @@ public class MentorAssignmentController {
         AssignmentResponse data = assignmentService.assignCurriculum(current.userId(), traineeId, request.curriculumId());
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(HttpStatus.CREATED.value(), "Curriculum assigned successfully", data));
+    }
+
+    @PutMapping("/{traineeId}/assignments/active")
+    @Operation(summary = "Replace active assignment of trainee with another published curriculum")
+    public ResponseEntity<ApiResponse<AssignmentResponse>> replaceActiveAssignment(
+            Authentication authentication,
+            @PathVariable("traineeId") Long traineeId,
+            @Valid @RequestBody AssignCurriculumRequest request
+    ) {
+        AuthenticatedUser current = (AuthenticatedUser) authentication.getPrincipal();
+        AssignmentResponse data = assignmentService.replaceActiveAssignment(current.userId(), traineeId, request.curriculumId());
+        return ResponseEntity.ok(
+                ApiResponse.success(HttpStatus.OK.value(), "Active assignment replaced successfully", data)
+        );
     }
 }
