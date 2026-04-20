@@ -108,4 +108,6 @@ export interface AssignmentTaskResponse {
   completedAt: string | null
   createdAt: string
   updatedAt: string
+  learningMaterialId: number | null
+  learningMaterialFileName: string | null
 }

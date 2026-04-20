@@ -119,9 +119,11 @@ public class AssignmentService {
         return jdbcTemplate.query(
                 """
                 select t.id, t.assignment_id, t.task_template_id, tt.sort_order, t.title, t.description, t.status,
-                       t.started_at, t.completed_at, t.created_at, t.updated_at
+                       t.started_at, t.completed_at, t.created_at, t.updated_at,
+                       lm.id as learning_material_id, lm.file_name as learning_material_file_name
                 from tasks t
                 join task_templates tt on tt.id = t.task_template_id
+                left join learning_materials lm on lm.id = tt.learning_material_id
                 where t.assignment_id = ?
                 order by tt.sort_order asc, t.id asc
                 """,
@@ -282,6 +284,8 @@ public class AssignmentService {
         Timestamp completedAt = rs.getTimestamp("completed_at");
         Timestamp createdAt = rs.getTimestamp("created_at");
         Timestamp updatedAt = rs.getTimestamp("updated_at");
+        long materialIdRaw = rs.getLong("learning_material_id");
+        Long learningMaterialId = rs.wasNull() ? null : materialIdRaw;
         return new AssignmentTaskResponse(
                 rs.getLong("id"),
                 rs.getLong("assignment_id"),
@@ -293,7 +297,9 @@ public class AssignmentService {
                 startedAt == null ? null : startedAt.toLocalDateTime(),
                 completedAt == null ? null : completedAt.toLocalDateTime(),
                 createdAt == null ? null : createdAt.toLocalDateTime(),
-                updatedAt == null ? null : updatedAt.toLocalDateTime()
+                updatedAt == null ? null : updatedAt.toLocalDateTime(),
+                learningMaterialId,
+                rs.getString("learning_material_file_name")
         );
     }
 

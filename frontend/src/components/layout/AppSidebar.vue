@@ -9,13 +9,17 @@ type SidebarLink = {
   activePrefixes?: string[]
 }
 
-const props = defineProps<{
-  title: string
-  userEmail?: string
-  userRole: string
-  primaryLinks: SidebarLink[]
-  secondaryLinks: SidebarLink[]
-}>()
+const props = withDefaults(
+  defineProps<{
+    title: string
+    userEmail?: string
+    userRole: string
+    primaryLinks: SidebarLink[]
+    secondaryLinks: SidebarLink[]
+    variant?: 'mentor' | 'trainee'
+  }>(),
+  { variant: 'mentor' },
+)
 
 const emit = defineEmits<{
   logout: []
@@ -33,7 +37,7 @@ function isActive(link: SidebarLink): boolean {
 </script>
 
 <template>
-  <aside class="sidebar">
+  <aside class="sidebar" :class="`sidebar--${props.variant}`">
     <div>
       <p class="brand">{{ props.title }}</p>
       <nav class="nav">
@@ -159,10 +163,42 @@ function isActive(link: SidebarLink): boolean {
   color: var(--text-muted);
 }
 
+.sidebar--trainee {
+  background: linear-gradient(180deg, #faf5ff 0%, #ffffff 45%);
+  border-right-color: #e9d5ff;
+}
+
+.sidebar--trainee .brand {
+  color: #581c87;
+}
+
+.sidebar--trainee .nav a.is-active {
+  background: #f3e8ff;
+  color: #6d28d9;
+  font-weight: 600;
+}
+
+.sidebar--trainee .nav a:hover,
+.sidebar--trainee .logout-btn:hover {
+  background: #ede9fe;
+}
+
+.sidebar--trainee .user-card {
+  border-color: #e9d5ff;
+}
+
+.sidebar--trainee .secondary {
+  border-top-color: #e9d5ff;
+}
+
 @media (max-width: 900px) {
   .sidebar {
     border-right: 0;
     border-bottom: 1px solid #e2e8f0;
+  }
+
+  .sidebar--trainee {
+    border-bottom-color: #e9d5ff;
   }
 }
 </style>

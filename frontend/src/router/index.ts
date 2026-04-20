@@ -37,16 +37,16 @@ const router = createRouter({
       component: () => import('../views/trainee/TraineeLayout.vue'),
       meta: { requiresAuth: true, role: 'TRAINEE' },
       children: [
-        { path: '', name: 'trainee-home', component: () => import('../views/trainee/TraineeHomeView.vue') },
+        { path: '', name: 'trainee-home', component: () => import('../views/trainee/TraineeDashboardView.vue') },
         {
           path: 'curriculum',
           name: 'trainee-curriculum',
-          component: () => import('../views/trainee/TraineeHomeView.vue'),
+          component: () => import('../views/trainee/TraineeLearningPathView.vue'),
         },
         {
           path: 'assignment',
           name: 'trainee-assignment',
-          component: () => import('../views/trainee/TraineeHomeView.vue'),
+          component: () => import('../views/trainee/TraineeFocusView.vue'),
         },
       ],
     },

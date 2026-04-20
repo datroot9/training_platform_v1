@@ -13,6 +13,8 @@ public record AssignmentTaskResponse(
         LocalDateTime startedAt,
         LocalDateTime completedAt,
         LocalDateTime createdAt,
-        LocalDateTime updatedAt
+        LocalDateTime updatedAt,
+        Long learningMaterialId,
+        String learningMaterialFileName
 ) {
 }

@@ -1,8 +1,18 @@
-import { requestJson, requestRaw } from '../client'
+import { ApiError, requestJson, requestRaw } from '../client'
 import type { AssignmentResponse, AssignmentTaskResponse } from '../types'
 
 export async function getActiveAssignment(): Promise<AssignmentResponse> {
   return requestJson<AssignmentResponse>('/api/trainee/assignments/active')
+}
+
+/** Returns null when the trainee has no active assignment (HTTP 404 from API). */
+export async function getActiveAssignmentOrNull(): Promise<AssignmentResponse | null> {
+  try {
+    return await getActiveAssignment()
+  } catch (e) {
+    if (e instanceof ApiError && e.httpStatus === 404) return null
+    throw e
+  }
 }
 
 export async function getAssignmentTasks(assignmentId: number): Promise<AssignmentTaskResponse[]> {
