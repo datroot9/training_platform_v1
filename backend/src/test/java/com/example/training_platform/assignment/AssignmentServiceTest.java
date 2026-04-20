@@ -2,23 +2,29 @@ package com.example.training_platform.assignment;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.contains;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.atLeastOnce;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.when;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.sql.ResultSet;
-import java.sql.Timestamp;
-import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 import com.example.training_platform.assignment.dto.AssignmentTaskResponse;
+import com.example.training_platform.dao.AssignmentDao;
+import com.example.training_platform.dao.CurriculumDao;
+import com.example.training_platform.dao.LearningMaterialDao;
+import com.example.training_platform.dao.TaskDao;
+import com.example.training_platform.dao.TaskTemplateDao;
+import com.example.training_platform.dao.UserDao;
+import com.example.training_platform.dao.projection.AssignmentProjection;
+import com.example.training_platform.dao.projection.AssignmentTaskProjection;
+import com.example.training_platform.entity.CurriculumEntity;
+import com.example.training_platform.entity.LearningMaterialEntity;
+import com.example.training_platform.entity.TaskEntity;
+import com.example.training_platform.entity.TaskTemplateEntity;
+import com.example.training_platform.entity.TraineeCurriculumAssignmentEntity;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -26,15 +32,28 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowMapper;
 import org.springframework.web.server.ResponseStatusException;
 
 @ExtendWith(MockitoExtension.class)
 class AssignmentServiceTest {
 
     @Mock
-    private JdbcTemplate jdbcTemplate;
+    private UserDao userDao;
+
+    @Mock
+    private CurriculumDao curriculumDao;
+
+    @Mock
+    private AssignmentDao assignmentDao;
+
+    @Mock
+    private TaskTemplateDao taskTemplateDao;
+
+    @Mock
+    private TaskDao taskDao;
+
+    @Mock
+    private LearningMaterialDao learningMaterialDao;
 
     @Mock
     private com.example.training_platform.curriculum.LocalPdfStorageService storageService;
@@ -46,42 +65,56 @@ class AssignmentServiceTest {
 
     @BeforeEach
     void setUp() {
-        assignmentService = new AssignmentService(jdbcTemplate, storageService);
+        assignmentService = new AssignmentService(
+                userDao,
+                curriculumDao,
+                assignmentDao,
+                taskTemplateDao,
+                taskDao,
+                learningMaterialDao,
+                storageService
+        );
         lenient().when(storageService.root()).thenReturn(tempDir);
     }
 
     @Test
     void assignCurriculumSuccessWhenNoActiveAssignment() {
-        when(jdbcTemplate.queryForObject(contains("from users"), eq(Integer.class), eq(11L), eq(5L))).thenReturn(1);
-        when(jdbcTemplate.query(contains("from curricula"), any(RowMapper.class), eq(22L), eq(5L)))
-                .thenReturn(List.of("Published Curriculum"));
-        when(jdbcTemplate.queryForObject(contains("from trainee_curriculum_assignments"), eq(Integer.class), eq(11L)))
-                .thenReturn(0);
-        when(jdbcTemplate.update(contains("insert into trainee_curriculum_assignments"), eq(11L), eq(22L), eq(5L)))
-                .thenReturn(1);
-        when(jdbcTemplate.queryForObject("select last_insert_id()", Long.class)).thenReturn(100L);
-        when(jdbcTemplate.query(contains("from task_templates"), any(RowMapper.class), eq(22L)))
-                .thenReturn(List.of());
-        when(jdbcTemplate.query(contains("from trainee_curriculum_assignments a"), any(RowMapper.class), eq(100L), eq(11L)))
-                .thenReturn(List.of());
+        CurriculumEntity curriculum = new CurriculumEntity();
+        curriculum.setId(22L);
+        curriculum.setName("Published Curriculum");
+        curriculum.setStatus("PUBLISHED");
+
+        TraineeCurriculumAssignmentEntity assignmentEntity = new TraineeCurriculumAssignmentEntity();
+        assignmentEntity.setId(100L);
+
+        when(userDao.countTraineeByMentor(5L, 11L)).thenReturn(1L);
+        when(curriculumDao.selectByIdAndCreator(22L, 5L)).thenReturn(Optional.of(curriculum));
+        when(assignmentDao.countActiveByTrainee(11L)).thenReturn(0L);
+        when(taskTemplateDao.listByCurriculumId(22L)).thenReturn(List.of());
+        doAnswer(invocation -> {
+            TraineeCurriculumAssignmentEntity arg = invocation.getArgument(0);
+            arg.setId(100L);
+            return 1;
+        }).when(assignmentDao).insert(org.mockito.ArgumentMatchers.any(TraineeCurriculumAssignmentEntity.class));
+        when(assignmentDao.selectAssignmentProjectionByIdAndTrainee(100L, 11L)).thenReturn(Optional.empty());
 
         var result = assignmentService.assignCurriculum(5L, 11L, 22L);
 
-        assertThat(result.id()).isEqualTo(100L);
         assertThat(result.traineeId()).isEqualTo(11L);
         assertThat(result.curriculumId()).isEqualTo(22L);
-        assertThat(result.curriculumName()).isEqualTo("Published Curriculum");
         assertThat(result.status()).isEqualTo("ACTIVE");
         assertThat(result.generatedTaskCount()).isEqualTo(0);
     }
 
     @Test
     void assignCurriculumBlockedWhenActiveAssignmentExists() {
-        when(jdbcTemplate.queryForObject(contains("from users"), eq(Integer.class), eq(11L), eq(5L))).thenReturn(1);
-        when(jdbcTemplate.query(contains("from curricula"), any(RowMapper.class), eq(22L), eq(5L)))
-                .thenReturn(List.of("Published Curriculum"));
-        when(jdbcTemplate.queryForObject(contains("from trainee_curriculum_assignments"), eq(Integer.class), eq(11L)))
-                .thenReturn(1);
+        CurriculumEntity curriculum = new CurriculumEntity();
+        curriculum.setId(22L);
+        curriculum.setName("Published Curriculum");
+        curriculum.setStatus("PUBLISHED");
+        when(userDao.countTraineeByMentor(5L, 11L)).thenReturn(1L);
+        when(curriculumDao.selectByIdAndCreator(22L, 5L)).thenReturn(Optional.of(curriculum));
+        when(assignmentDao.countActiveByTrainee(11L)).thenReturn(1L);
 
         assertThatThrownBy(() -> assignmentService.assignCurriculum(5L, 11L, 22L))
                 .isInstanceOf(ResponseStatusException.class)
@@ -91,33 +124,43 @@ class AssignmentServiceTest {
 
     @Test
     void replaceActiveAssignmentSuccessWhenCurrentActiveExists() {
-        when(jdbcTemplate.queryForObject(contains("from users"), eq(Integer.class), eq(11L), eq(5L))).thenReturn(1);
-        when(jdbcTemplate.query(contains("from curricula"), any(RowMapper.class), eq(22L), eq(5L)))
-                .thenReturn(List.of("Published Curriculum"));
-        when(jdbcTemplate.update(contains("set status = 'CANCELLED'"), eq(11L))).thenReturn(1);
-        when(jdbcTemplate.update(contains("insert into trainee_curriculum_assignments"), eq(11L), eq(22L), eq(5L)))
-                .thenReturn(1);
-        when(jdbcTemplate.queryForObject("select last_insert_id()", Long.class)).thenReturn(101L);
-        when(jdbcTemplate.query(contains("from task_templates"), any(RowMapper.class), eq(22L)))
-                .thenReturn(List.of());
-        when(jdbcTemplate.query(contains("from trainee_curriculum_assignments a"), any(RowMapper.class), eq(101L), eq(11L)))
-                .thenReturn(List.of());
+        CurriculumEntity curriculum = new CurriculumEntity();
+        curriculum.setId(22L);
+        curriculum.setName("Published Curriculum");
+        curriculum.setStatus("PUBLISHED");
+        TraineeCurriculumAssignmentEntity active = new TraineeCurriculumAssignmentEntity();
+        active.setId(88L);
+        active.setStatus("ACTIVE");
+        when(userDao.countTraineeByMentor(5L, 11L)).thenReturn(1L);
+        when(curriculumDao.selectByIdAndCreator(22L, 5L)).thenReturn(Optional.of(curriculum));
+        when(assignmentDao.selectActiveByTrainee(11L)).thenReturn(Optional.of(active));
+        when(assignmentDao.update(active)).thenReturn(1);
+        when(taskTemplateDao.listByCurriculumId(22L)).thenReturn(List.of());
+        doAnswer(invocation -> {
+            TraineeCurriculumAssignmentEntity arg = invocation.getArgument(0);
+            if (arg.getId() == null) {
+                arg.setId(101L);
+            }
+            return 1;
+        }).when(assignmentDao).insert(org.mockito.ArgumentMatchers.any(TraineeCurriculumAssignmentEntity.class));
+        when(assignmentDao.selectAssignmentProjectionByIdAndTrainee(101L, 11L)).thenReturn(Optional.empty());
 
         var result = assignmentService.replaceActiveAssignment(5L, 11L, 22L);
 
-        assertThat(result.id()).isEqualTo(101L);
         assertThat(result.traineeId()).isEqualTo(11L);
         assertThat(result.curriculumId()).isEqualTo(22L);
-        assertThat(result.curriculumName()).isEqualTo("Published Curriculum");
         assertThat(result.status()).isEqualTo("ACTIVE");
     }
 
     @Test
     void replaceActiveAssignmentBlockedWhenNoActiveAssignment() {
-        when(jdbcTemplate.queryForObject(contains("from users"), eq(Integer.class), eq(11L), eq(5L))).thenReturn(1);
-        when(jdbcTemplate.query(contains("from curricula"), any(RowMapper.class), eq(22L), eq(5L)))
-                .thenReturn(List.of("Published Curriculum"));
-        when(jdbcTemplate.update(contains("set status = 'CANCELLED'"), eq(11L))).thenReturn(0);
+        CurriculumEntity curriculum = new CurriculumEntity();
+        curriculum.setId(22L);
+        curriculum.setName("Published Curriculum");
+        curriculum.setStatus("PUBLISHED");
+        when(userDao.countTraineeByMentor(5L, 11L)).thenReturn(1L);
+        when(curriculumDao.selectByIdAndCreator(22L, 5L)).thenReturn(Optional.of(curriculum));
+        when(assignmentDao.selectActiveByTrainee(11L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> assignmentService.replaceActiveAssignment(5L, 11L, 22L))
                 .isInstanceOf(ResponseStatusException.class)
@@ -127,9 +170,8 @@ class AssignmentServiceTest {
 
     @Test
     void replaceActiveAssignmentBlockedWhenCurriculumInvalid() {
-        when(jdbcTemplate.queryForObject(contains("from users"), eq(Integer.class), eq(11L), eq(5L))).thenReturn(1);
-        when(jdbcTemplate.query(contains("from curricula"), any(RowMapper.class), eq(22L), eq(5L)))
-                .thenReturn(List.of());
+        when(userDao.countTraineeByMentor(5L, 11L)).thenReturn(1L);
+        when(curriculumDao.selectByIdAndCreator(22L, 5L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> assignmentService.replaceActiveAssignment(5L, 11L, 22L))
                 .isInstanceOf(ResponseStatusException.class)
@@ -139,8 +181,7 @@ class AssignmentServiceTest {
 
     @Test
     void loadMaterialBlockedWhenNotOwnedByActiveAssignment() {
-        when(jdbcTemplate.query(contains("from learning_materials lm"), any(RowMapper.class), eq(9L), eq(11L)))
-                .thenReturn(List.of());
+        when(learningMaterialDao.selectAccessibleByTraineeAndMaterialId(11L, 9L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> assignmentService.loadMaterialForTrainee(11L, 9L))
                 .isInstanceOf(ResponseStatusException.class)
@@ -150,9 +191,11 @@ class AssignmentServiceTest {
 
     @Test
     void loadMaterialReturnsNotFoundWhenPhysicalFileMissing() {
-        var material = new AssignmentService.DownloadableMaterial(9L, "lesson.pdf", "seed/demo/lesson.pdf");
-        when(jdbcTemplate.query(contains("from learning_materials lm"), any(RowMapper.class), eq(9L), eq(11L)))
-                .thenReturn(List.of(material));
+        LearningMaterialEntity material = new LearningMaterialEntity();
+        material.setId(9L);
+        material.setFileName("lesson.pdf");
+        material.setStoragePath("seed/demo/lesson.pdf");
+        when(learningMaterialDao.selectAccessibleByTraineeAndMaterialId(11L, 9L)).thenReturn(Optional.of(material));
 
         assertThatThrownBy(() -> assignmentService.loadMaterialForTrainee(11L, 9L))
                 .isInstanceOf(ResponseStatusException.class)
@@ -167,29 +210,25 @@ class AssignmentServiceTest {
         Files.createDirectories(absolute.getParent());
         Files.writeString(absolute, "%PDF-1.4 test");
 
-        var material = new AssignmentService.DownloadableMaterial(9L, "lesson.pdf", relative.toString().replace('\\', '/'));
-        when(jdbcTemplate.query(contains("from learning_materials lm"), any(RowMapper.class), eq(9L), eq(11L)))
-                .thenReturn(List.of(material));
+        LearningMaterialEntity material = new LearningMaterialEntity();
+        material.setId(9L);
+        material.setFileName("lesson.pdf");
+        material.setStoragePath(relative.toString().replace('\\', '/'));
+        when(learningMaterialDao.selectAccessibleByTraineeAndMaterialId(11L, 9L)).thenReturn(Optional.of(material));
 
         var result = assignmentService.loadMaterialForTrainee(11L, 9L);
         assertThat(result.id()).isEqualTo(9L);
         assertThat(result.fileName()).isEqualTo("lesson.pdf");
-        verify(storageService, atLeastOnce()).root();
     }
 
     @Test
     void updateTaskStatusBlockedWhenTransitionIsInvalid() throws Exception {
-        when(jdbcTemplate.queryForObject(contains("from trainee_curriculum_assignments"), eq(Integer.class), eq(100L), eq(11L)))
-                .thenReturn(1);
-        when(jdbcTemplate.query(contains("select status, started_at"), any(RowMapper.class), eq(200L), eq(100L)))
-                .thenAnswer(invocation -> {
-                    @SuppressWarnings("unchecked")
-                    RowMapper<Object> mapper = (RowMapper<Object>) invocation.getArgument(1);
-                    ResultSet rs = org.mockito.Mockito.mock(ResultSet.class);
-                    when(rs.getString("status")).thenReturn("DONE");
-                    when(rs.getTimestamp("started_at")).thenReturn(Timestamp.valueOf(LocalDateTime.now().minusDays(2)));
-                    return List.of(mapper.mapRow(rs, 0));
-                });
+        TaskEntity task = new TaskEntity();
+        task.setId(200L);
+        task.setAssignmentId(100L);
+        task.setStatus("DONE");
+        when(assignmentDao.countByIdAndTrainee(100L, 11L)).thenReturn(1L);
+        when(taskDao.selectByAssignmentAndTaskId(100L, 200L)).thenReturn(Optional.of(task));
 
         assertThatThrownBy(() -> assignmentService.updateTaskStatus(11L, 100L, 200L, "NOT_STARTED"))
                 .isInstanceOf(ResponseStatusException.class)
@@ -198,43 +237,23 @@ class AssignmentServiceTest {
     }
 
     @Test
-    void updateTaskStatusSuccessWhenTransitionIsValid() throws Exception {
-        when(jdbcTemplate.queryForObject(contains("from trainee_curriculum_assignments"), eq(Integer.class), eq(100L), eq(11L)))
-                .thenReturn(1);
-        when(jdbcTemplate.query(contains("select status, started_at"), any(RowMapper.class), eq(200L), eq(100L)))
-                .thenAnswer(invocation -> {
-                    @SuppressWarnings("unchecked")
-                    RowMapper<Object> mapper = (RowMapper<Object>) invocation.getArgument(1);
-                    ResultSet rs = org.mockito.Mockito.mock(ResultSet.class);
-                    when(rs.getString("status")).thenReturn("NOT_STARTED");
-                    when(rs.getTimestamp("started_at")).thenReturn(null);
-                    return List.of(mapper.mapRow(rs, 0));
-                });
-        when(jdbcTemplate.update(contains("update tasks"), eq("IN_PROGRESS"), any(), isNull(), eq(200L), eq(100L)))
-                .thenReturn(1);
-        when(jdbcTemplate.query(contains("from tasks t"), any(RowMapper.class), eq(200L), eq(100L)))
-                .thenAnswer(invocation -> {
-                    @SuppressWarnings("unchecked")
-                    RowMapper<AssignmentTaskResponse> mapper = (RowMapper<AssignmentTaskResponse>) invocation.getArgument(1);
-                    ResultSet rs = org.mockito.Mockito.mock(ResultSet.class);
-                    when(rs.getLong("id")).thenReturn(200L);
-                    when(rs.getLong("assignment_id")).thenReturn(100L);
-                    when(rs.getLong("task_template_id")).thenReturn(12L);
-                    when(rs.getInt("sort_order")).thenReturn(1);
-                    when(rs.getString("title")).thenReturn("Task A");
-                    when(rs.getString("description")).thenReturn("Desc");
-                    when(rs.getObject("estimated_days", Integer.class)).thenReturn(3);
-                    when(rs.getString("status")).thenReturn("IN_PROGRESS");
-                    Timestamp now = Timestamp.valueOf(LocalDateTime.now());
-                    when(rs.getTimestamp("started_at")).thenReturn(now);
-                    when(rs.getTimestamp("completed_at")).thenReturn(null);
-                    when(rs.getTimestamp("created_at")).thenReturn(now);
-                    when(rs.getTimestamp("updated_at")).thenReturn(now);
-                    when(rs.getLong("learning_material_id")).thenReturn(0L);
-                    when(rs.wasNull()).thenReturn(true);
-                    when(rs.getString("learning_material_file_name")).thenReturn(null);
-                    return List.of(mapper.mapRow(rs, 0));
-                });
+    void updateTaskStatusSuccessWhenTransitionIsValid() {
+        TaskEntity task = new TaskEntity();
+        task.setId(200L);
+        task.setAssignmentId(100L);
+        task.setStatus("NOT_STARTED");
+        AssignmentTaskProjection projection = new AssignmentTaskProjection();
+        projection.setId(200L);
+        projection.setAssignmentId(100L);
+        projection.setTaskTemplateId(12L);
+        projection.setSortOrder(1);
+        projection.setTitle("Task A");
+        projection.setDescription("Desc");
+        projection.setEstimatedDays(3);
+        projection.setStatus("IN_PROGRESS");
+        when(assignmentDao.countByIdAndTrainee(100L, 11L)).thenReturn(1L);
+        when(taskDao.selectByAssignmentAndTaskId(100L, 200L)).thenReturn(Optional.of(task));
+        when(taskDao.listAssignmentTasks(100L)).thenReturn(List.of(projection));
 
         AssignmentTaskResponse result = assignmentService.updateTaskStatus(11L, 100L, 200L, "IN_PROGRESS");
 

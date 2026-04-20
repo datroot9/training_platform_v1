@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.seasar.doma.Column;
 import org.seasar.doma.Entity;
 import org.seasar.doma.GeneratedValue;
 import org.seasar.doma.GenerationType;
@@ -29,6 +30,8 @@ public class UserEntity {
     private LocalDateTime passwordUpdatedAt;
     private Long mentorId;
     private boolean isActive;
+    @Column(insertable = false, updatable = false)
     private LocalDateTime createdAt;
+    @Column(insertable = false, updatable = false)
     private LocalDateTime updatedAt;
 }

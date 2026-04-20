@@ -1,9 +1,7 @@
 package com.example.training_platform.curriculum;
 
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Timestamp;
 import java.util.ArrayList;
+import java.time.LocalDateTime;
 import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -13,6 +11,13 @@ import java.util.Objects;
 import java.util.Set;
 
 import com.example.training_platform.common.dto.PagedResponse;
+import com.example.training_platform.dao.AssignmentDao;
+import com.example.training_platform.dao.CurriculumDao;
+import com.example.training_platform.dao.LearningMaterialDao;
+import com.example.training_platform.dao.TaskTemplateDao;
+import com.example.training_platform.dao.projection.CurriculumSourceProjection;
+import com.example.training_platform.dao.projection.MaterialCopyProjection;
+import com.example.training_platform.dao.projection.TaskTemplateCopyProjection;
 import com.example.training_platform.curriculum.dto.CreateCurriculumRequest;
 import com.example.training_platform.curriculum.dto.CreateCurriculumVersionRequest;
 import com.example.training_platform.curriculum.dto.CreateTaskTemplateRequest;
@@ -22,10 +27,11 @@ import com.example.training_platform.curriculum.dto.LearningMaterialResponse;
 import com.example.training_platform.curriculum.dto.TaskTemplateResponse;
 import com.example.training_platform.curriculum.dto.UpdateCurriculumRequest;
 import com.example.training_platform.curriculum.dto.UpdateTaskTemplateRequest;
-import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.dao.DuplicateKeyException;
+import com.example.training_platform.entity.CurriculumEntity;
+import com.example.training_platform.entity.LearningMaterialEntity;
+import com.example.training_platform.entity.TaskTemplateEntity;
+import org.seasar.doma.jdbc.UniqueConstraintException;
 import org.springframework.http.HttpStatus;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -39,30 +45,41 @@ public class CurriculumService {
     private static final int DEFAULT_SIZE = 10;
     private static final int MAX_SIZE = 100;
 
-    private final JdbcTemplate jdbcTemplate;
+    private final CurriculumDao curriculumDao;
+    private final LearningMaterialDao learningMaterialDao;
+    private final TaskTemplateDao taskTemplateDao;
+    private final AssignmentDao assignmentDao;
     private final LocalPdfStorageService pdfStorage;
 
-    public CurriculumService(JdbcTemplate jdbcTemplate, LocalPdfStorageService pdfStorage) {
-        this.jdbcTemplate = jdbcTemplate;
+    public CurriculumService(
+            CurriculumDao curriculumDao,
+            LearningMaterialDao learningMaterialDao,
+            TaskTemplateDao taskTemplateDao,
+            AssignmentDao assignmentDao,
+            LocalPdfStorageService pdfStorage
+    ) {
+        this.curriculumDao = curriculumDao;
+        this.learningMaterialDao = learningMaterialDao;
+        this.taskTemplateDao = taskTemplateDao;
+        this.assignmentDao = assignmentDao;
         this.pdfStorage = pdfStorage;
     }
 
     @Transactional
     public CurriculumResponse create(Long mentorId, CreateCurriculumRequest request) {
-        jdbcTemplate.update(
-                """
-                insert into curricula (name, description, created_by, status, version_label)
-                values (?, ?, ?, 'DRAFT', '1.0')
-                """,
-                request.name(),
-                request.description(),
-                mentorId
-        );
-        Long id = jdbcTemplate.queryForObject("select last_insert_id()", Long.class);
+        CurriculumEntity entity = new CurriculumEntity();
+        entity.setName(request.name());
+        entity.setDescription(request.description());
+        entity.setCreatedBy(mentorId);
+        entity.setStatus("DRAFT");
+        entity.setVersionLabel("1.0");
+        curriculumDao.insert(entity);
+        Long id = entity.getId();
         if (id == null) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to create curriculum");
         }
-        jdbcTemplate.update("update curricula set curriculum_group_id = ? where id = ?", id, id);
+        entity.setCurriculumGroupId(id);
+        curriculumDao.update(entity);
         return loadCurriculumResponse(mentorId, id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to load curriculum"));
     }
@@ -81,47 +98,20 @@ public class CurriculumService {
         String keyword = normalizeKeyword(query);
         String normalizedStatus = normalizeStatus(status);
 
-        StringBuilder whereClause = new StringBuilder(
-                """
-                from curricula
-                where created_by = ?
-                """
-        );
-        List<Object> params = new ArrayList<>();
-        params.add(mentorId);
-
-        if (keyword != null) {
-            whereClause.append(
-                    """
-                      and (lower(name) like lower(concat('%', ?, '%'))
-                        or lower(coalesce(description, '')) like lower(concat('%', ?, '%')))
-                    """
-            );
-            params.add(keyword);
-            params.add(keyword);
-        }
-        if (normalizedStatus != null) {
-            whereClause.append(" and status = ?");
-            params.add(normalizedStatus);
-        }
-
-        Long totalElements = jdbcTemplate.queryForObject(
-                "select count(*) " + whereClause,
-                Long.class,
-                params.toArray()
-        );
-        long safeTotal = totalElements == null ? 0 : totalElements;
-
-        String listSql =
-                """
-                select id, curriculum_group_id, version_label, name, description, status, published_at, created_at, updated_at
-                """
-                        + whereClause +
-                        " order by " + safeSortBy + " " + safeSortDir + " limit ? offset ?";
-        List<Object> listParams = new ArrayList<>(params);
-        listParams.add(safeSize);
-        listParams.add((long) safePage * safeSize);
-        List<CurriculumResponse> rows = jdbcTemplate.query(listSql, this::mapCurriculumResponse, listParams.toArray());
+        long safeTotal = curriculumDao.countByCreatorWithFilter(mentorId, keyword, normalizedStatus);
+        List<CurriculumResponse> rows = curriculumDao
+                .listByCreatorWithFilter(
+                        mentorId,
+                        keyword,
+                        normalizedStatus,
+                        safeSortBy,
+                        safeSortDir,
+                        safeSize,
+                        (long) safePage * safeSize
+                )
+                .stream()
+                .map(this::mapCurriculumResponse)
+                .toList();
         return PagedResponse.of(rows, safePage, safeSize, safeTotal);
     }
 
@@ -129,45 +119,36 @@ public class CurriculumService {
         CurriculumResponse head = loadCurriculumResponse(mentorId, curriculumId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Curriculum not found"));
 
-        List<LearningMaterialResponse> materials = jdbcTemplate.query(
-                """
-                select id, curriculum_id, file_name, storage_path, file_size_bytes, sort_order, uploaded_at
-                from learning_materials
-                where curriculum_id = ?
-                order by sort_order asc, id asc
-                """,
-                this::mapMaterial,
-                curriculumId
-        );
+        List<LearningMaterialResponse> materials = learningMaterialDao.listByCurriculumId(curriculumId)
+                .stream()
+                .map(this::mapMaterial)
+                .toList();
 
-        List<TaskTemplateResponse> templates = jdbcTemplate.query(
-                """
-                select id, curriculum_id, learning_material_id, sort_order, title, description, estimated_days, created_at, updated_at
-                from task_templates
-                where curriculum_id = ?
-                order by sort_order asc, id asc
-                """,
-                this::mapTemplate,
-                curriculumId
-        );
+        List<TaskTemplateResponse> templates = taskTemplateDao.listByCurriculumId(curriculumId)
+                .stream()
+                .map(this::mapTemplate)
+                .toList();
 
         return new CurriculumDetailResponse(head, materials, templates);
     }
 
     public CurriculumResponse update(Long mentorId, Long curriculumId, UpdateCurriculumRequest request) {
         assertDraft(mentorId, curriculumId);
+        CurriculumEntity entity = curriculumDao.selectByIdAndCreator(curriculumId, mentorId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Curriculum not found"));
         boolean any = false;
         if (request.name() != null && !request.name().isBlank()) {
-            jdbcTemplate.update("update curricula set name = ? where id = ? and created_by = ?", request.name(), curriculumId, mentorId);
+            entity.setName(request.name());
             any = true;
         }
         if (request.description() != null) {
-            jdbcTemplate.update("update curricula set description = ? where id = ? and created_by = ?", request.description(), curriculumId, mentorId);
+            entity.setDescription(request.description());
             any = true;
         }
         if (!any) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No fields to update");
         }
+        curriculumDao.update(entity);
         return loadCurriculumResponse(mentorId, curriculumId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Curriculum not found"));
     }
@@ -179,148 +160,73 @@ public class CurriculumService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "versionLabel is required");
         }
 
-        List<SourceCurriculumRow> headRows = jdbcTemplate.query(
-                """
-                select curriculum_group_id, name, description, status
-                from curricula
-                where id = ? and created_by = ?
-                """,
-                (rs, i) -> new SourceCurriculumRow(
-                        rs.getLong("curriculum_group_id"),
-                        rs.getString("name"),
-                        rs.getString("description"),
-                        rs.getString("status")
-                ),
-                sourceCurriculumId,
-                mentorId
-        );
-        if (headRows.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Curriculum not found");
-        }
-        SourceCurriculumRow source = headRows.get(0);
-        if (!"PUBLISHED".equals(source.status())) {
+        CurriculumSourceProjection source = curriculumDao.selectSourceForFork(sourceCurriculumId, mentorId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Curriculum not found"));
+        if (!"PUBLISHED".equals(source.getStatus())) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
                     "Only published curricula can be branched into a new draft version"
             );
         }
 
-        Integer dup = jdbcTemplate.queryForObject(
-                """
-                select count(*) from curricula
-                where curriculum_group_id = ? and version_label = ?
-                """,
-                Integer.class,
-                source.groupId(),
-                normalizedVersion
-        );
-        if (dup != null && dup > 0) {
+        if (curriculumDao.countByGroupAndVersion(source.getCurriculumGroupId(), normalizedVersion) > 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "This version label already exists for this curriculum family");
         }
 
-        String newName = request.name() != null && !request.name().isBlank() ? request.name().trim() : source.name();
-        String newDescription = request.description() != null ? request.description() : source.description();
+        String newName = request.name() != null && !request.name().isBlank() ? request.name().trim() : source.getName();
+        String newDescription = request.description() != null ? request.description() : source.getDescription();
 
+        CurriculumEntity forked = new CurriculumEntity();
+        forked.setName(newName);
+        forked.setDescription(newDescription);
+        forked.setStatus("DRAFT");
+        forked.setCreatedBy(mentorId);
+        forked.setCurriculumGroupId(source.getCurriculumGroupId());
+        forked.setVersionLabel(normalizedVersion);
         try {
-            jdbcTemplate.update(
-                    """
-                    insert into curricula (name, description, created_by, status, curriculum_group_id, version_label)
-                    values (?, ?, ?, 'DRAFT', ?, ?)
-                    """,
-                    newName,
-                    newDescription,
-                    mentorId,
-                    source.groupId(),
-                    normalizedVersion
-            );
-        } catch (DuplicateKeyException e) {
+            curriculumDao.insert(forked);
+        } catch (UniqueConstraintException e) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "This version label already exists for this curriculum family");
         }
-        Long newCurriculumId = jdbcTemplate.queryForObject("select last_insert_id()", Long.class);
+        Long newCurriculumId = forked.getId();
         if (newCurriculumId == null) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to create curriculum version");
         }
 
-        List<MaterialCopyRow> materials = jdbcTemplate.query(
-                """
-                select id, sort_order, file_name, storage_path, file_size_bytes, uploaded_at
-                from learning_materials
-                where curriculum_id = ?
-                order by sort_order asc, id asc
-                """,
-                (rs, i) -> new MaterialCopyRow(
-                        rs.getLong("id"),
-                        rs.getInt("sort_order"),
-                        rs.getString("file_name"),
-                        rs.getString("storage_path"),
-                        rs.getLong("file_size_bytes"),
-                        rs.getTimestamp("uploaded_at")
-                ),
-                sourceCurriculumId
-        );
-
+        List<MaterialCopyProjection> materials = learningMaterialDao.listForCopy(sourceCurriculumId);
         Map<Long, Long> oldMaterialIdToNew = new LinkedHashMap<>();
-        for (MaterialCopyRow m : materials) {
-            jdbcTemplate.update(
-                    """
-                    insert into learning_materials (curriculum_id, sort_order, file_name, storage_path, file_size_bytes, uploaded_at)
-                    values (?, ?, ?, ?, ?, ?)
-                    """,
-                    newCurriculumId,
-                    m.sortOrder(),
-                    m.fileName(),
-                    m.storagePath(),
-                    m.fileSizeBytes(),
-                    m.uploadedAt()
-            );
-            Long newMaterialId = jdbcTemplate.queryForObject("select last_insert_id()", Long.class);
-            if (newMaterialId == null) {
+        for (MaterialCopyProjection m : materials) {
+            LearningMaterialEntity copied = new LearningMaterialEntity();
+            copied.setCurriculumId(newCurriculumId);
+            copied.setSortOrder(m.getSortOrder());
+            copied.setFileName(m.getFileName());
+            copied.setStoragePath(m.getStoragePath());
+            copied.setFileSizeBytes(m.getFileSizeBytes());
+            copied.setUploadedAt(m.getUploadedAt());
+            learningMaterialDao.insert(copied);
+            if (copied.getId() == null) {
                 throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to copy learning material");
             }
-            oldMaterialIdToNew.put(m.oldId(), newMaterialId);
+            oldMaterialIdToNew.put(m.getId(), copied.getId());
         }
 
-        List<TemplateCopyRow> templates = jdbcTemplate.query(
-                """
-                select learning_material_id, sort_order, title, description, estimated_days
-                from task_templates
-                where curriculum_id = ?
-                order by sort_order asc, id asc
-                """,
-                (rs, i) -> {
-                    long lm = rs.getLong("learning_material_id");
-                    boolean lmNull = rs.wasNull();
-                    return new TemplateCopyRow(
-                            lmNull ? null : lm,
-                            rs.getInt("sort_order"),
-                            rs.getString("title"),
-                            rs.getString("description"),
-                            rs.getObject("estimated_days", Integer.class)
-                    );
-                },
-                sourceCurriculumId
-        );
-
-        for (TemplateCopyRow t : templates) {
-            Long newLm = t.oldLearningMaterialId() == null ? null : oldMaterialIdToNew.get(t.oldLearningMaterialId());
-            if (t.oldLearningMaterialId() != null && newLm == null) {
+        List<TaskTemplateCopyProjection> templates = taskTemplateDao.listForCopy(sourceCurriculumId);
+        for (TaskTemplateCopyProjection t : templates) {
+            Long newLm = t.getLearningMaterialId() == null ? null : oldMaterialIdToNew.get(t.getLearningMaterialId());
+            if (t.getLearningMaterialId() != null && newLm == null) {
                 throw new ResponseStatusException(
                         HttpStatus.INTERNAL_SERVER_ERROR,
                         "Task template referenced a learning material that was not copied"
                 );
             }
-            jdbcTemplate.update(
-                    """
-                    insert into task_templates (curriculum_id, learning_material_id, sort_order, title, description, estimated_days)
-                    values (?, ?, ?, ?, ?, ?)
-                    """,
-                    newCurriculumId,
-                    newLm,
-                    t.sortOrder(),
-                    t.title(),
-                    t.description(),
-                    t.estimatedDays()
-            );
+            TaskTemplateEntity copiedTemplate = new TaskTemplateEntity();
+            copiedTemplate.setCurriculumId(newCurriculumId);
+            copiedTemplate.setLearningMaterialId(newLm);
+            copiedTemplate.setSortOrder(t.getSortOrder());
+            copiedTemplate.setTitle(t.getTitle());
+            copiedTemplate.setDescription(t.getDescription());
+            copiedTemplate.setEstimatedDays(t.getEstimatedDays());
+            taskTemplateDao.insert(copiedTemplate);
         }
 
         return loadCurriculumResponse(mentorId, newCurriculumId)
@@ -345,61 +251,33 @@ public class CurriculumService {
         int order = resolveMaterialSortOrder(curriculumId, sortOrder);
         String relativePath = pdfStorage.savePdf(curriculumId, data);
         try {
-            jdbcTemplate.update(
-                    """
-                    insert into learning_materials (curriculum_id, sort_order, file_name, storage_path, file_size_bytes)
-                    values (?, ?, ?, ?, ?)
-                    """,
-                    curriculumId,
-                    order,
-                    displayName,
-                    relativePath,
-                    data.length
-            );
-        } catch (DuplicateKeyException e) {
+            LearningMaterialEntity entity = new LearningMaterialEntity();
+            entity.setCurriculumId(curriculumId);
+            entity.setSortOrder(order);
+            entity.setFileName(displayName);
+            entity.setStoragePath(relativePath);
+            entity.setFileSizeBytes((long) data.length);
+            learningMaterialDao.insert(entity);
+            if (entity.getId() == null) {
+                throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to save material");
+            }
+            return mapMaterial(entity);
+        } catch (UniqueConstraintException e) {
             pdfStorage.deleteIfExists(relativePath);
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Duplicate sort order for a learning material in this curriculum");
-        } catch (DataIntegrityViolationException e) {
+        } catch (RuntimeException e) {
             pdfStorage.deleteIfExists(relativePath);
-            if (e.getCause() != null && e.getCause().getMessage() != null
-                    && e.getCause().getMessage().contains("Duplicate")) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT, "Duplicate sort order for a learning material in this curriculum");
-            }
             throw e;
         }
-        Long materialId = jdbcTemplate.queryForObject("select last_insert_id()", Long.class);
-        return jdbcTemplate.query(
-                """
-                select id, curriculum_id, file_name, storage_path, file_size_bytes, sort_order, uploaded_at
-                from learning_materials where id = ?
-                """,
-                this::mapMaterial,
-                materialId
-        ).get(0);
     }
 
     public void deleteMaterial(Long mentorId, Long curriculumId, Long materialId) {
         assertDraft(mentorId, curriculumId);
-        List<String> paths = jdbcTemplate.query(
-                """
-                select storage_path from learning_materials
-                where id = ? and curriculum_id = ?
-                """,
-                (rs, i) -> rs.getString("storage_path"),
-                materialId,
-                curriculumId
-        );
-        if (paths.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Material not found");
-        }
-        String storagePath = paths.get(0);
-        jdbcTemplate.update("delete from learning_materials where id = ? and curriculum_id = ?", materialId, curriculumId);
-        Integer remaining = jdbcTemplate.queryForObject(
-                "select count(*) from learning_materials where storage_path = ?",
-                Integer.class,
-                storagePath
-        );
-        if (remaining == null || remaining == 0) {
+        LearningMaterialEntity material = learningMaterialDao.selectByIdAndCurriculumId(materialId, curriculumId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Material not found"));
+        String storagePath = material.getStoragePath();
+        learningMaterialDao.delete(material);
+        if (learningMaterialDao.countByStoragePath(storagePath) == 0) {
             pdfStorage.deleteIfExists(storagePath);
         }
     }
@@ -414,49 +292,24 @@ public class CurriculumService {
         }
         int order = resolveTemplateSortOrder(curriculumId, request.sortOrder());
         try {
-            jdbcTemplate.update(
-                    """
-                    insert into task_templates (curriculum_id, learning_material_id, sort_order, title, description, estimated_days)
-                    values (?, ?, ?, ?, ?, ?)
-                    """,
-                    curriculumId,
-                    request.learningMaterialId(),
-                    order,
-                    request.title(),
-                    request.description(),
-                    request.estimatedDays()
-            );
-        } catch (DuplicateKeyException e) {
+            TaskTemplateEntity entity = new TaskTemplateEntity();
+            entity.setCurriculumId(curriculumId);
+            entity.setLearningMaterialId(request.learningMaterialId());
+            entity.setSortOrder(order);
+            entity.setTitle(request.title());
+            entity.setDescription(request.description());
+            entity.setEstimatedDays(request.estimatedDays());
+            taskTemplateDao.insert(entity);
+            return mapTemplate(entity);
+        } catch (UniqueConstraintException e) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Duplicate sort order for a task template in this curriculum");
-        } catch (DataIntegrityViolationException e) {
-            if (e.getCause() != null && e.getCause().getMessage() != null
-                    && e.getCause().getMessage().contains("Duplicate")) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT, "Duplicate sort order for a task template in this curriculum");
-            }
-            throw e;
         }
-        Long templateId = jdbcTemplate.queryForObject("select last_insert_id()", Long.class);
-        return jdbcTemplate.query(
-                """
-                select id, curriculum_id, learning_material_id, sort_order, title, description, estimated_days, created_at, updated_at
-                from task_templates where id = ?
-                """,
-                this::mapTemplate,
-                templateId
-        ).get(0);
     }
 
     public TaskTemplateResponse updateTaskTemplate(Long mentorId, Long curriculumId, Long templateId, UpdateTaskTemplateRequest request) {
         assertDraft(mentorId, curriculumId);
-        int existing = jdbcTemplate.queryForObject(
-                "select count(*) from task_templates where id = ? and curriculum_id = ?",
-                Integer.class,
-                templateId,
-                curriculumId
-        );
-        if (existing == 0) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Task template not found");
-        }
+        TaskTemplateEntity entity = taskTemplateDao.selectByIdAndCurriculumId(templateId, curriculumId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Task template not found"));
         if (request.learningMaterialId() != null) {
             if (Objects.equals(request.learningMaterialId(), CLEAR_LEARNING_MATERIAL_SENTINEL)) {
                 // clear link — handled below
@@ -466,48 +319,22 @@ public class CurriculumService {
         }
         boolean any = false;
         if (request.title() != null && !request.title().isBlank()) {
-            jdbcTemplate.update(
-                    "update task_templates set title = ? where id = ? and curriculum_id = ?",
-                    request.title(),
-                    templateId,
-                    curriculumId
-            );
+            entity.setTitle(request.title());
             any = true;
         }
         if (request.description() != null) {
-            jdbcTemplate.update(
-                    "update task_templates set description = ? where id = ? and curriculum_id = ?",
-                    request.description(),
-                    templateId,
-                    curriculumId
-            );
+            entity.setDescription(request.description());
             any = true;
         }
         if (request.estimatedDays() != null) {
-            jdbcTemplate.update(
-                    "update task_templates set estimated_days = ? where id = ? and curriculum_id = ?",
-                    request.estimatedDays(),
-                    templateId,
-                    curriculumId
-            );
+            entity.setEstimatedDays(request.estimatedDays());
             any = true;
         }
         if (request.sortOrder() != null) {
             try {
-                jdbcTemplate.update(
-                        "update task_templates set sort_order = ? where id = ? and curriculum_id = ?",
-                        request.sortOrder(),
-                        templateId,
-                        curriculumId
-                );
-            } catch (DuplicateKeyException e) {
+                entity.setSortOrder(request.sortOrder());
+            } catch (UniqueConstraintException e) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "Duplicate sort order for a task template in this curriculum");
-            } catch (DataIntegrityViolationException e) {
-                if (e.getCause() != null && e.getCause().getMessage() != null
-                        && e.getCause().getMessage().contains("Duplicate")) {
-                    throw new ResponseStatusException(HttpStatus.CONFLICT, "Duplicate sort order for a task template in this curriculum");
-                }
-                throw e;
             }
             any = true;
         }
@@ -515,36 +342,26 @@ public class CurriculumService {
             Long link = Objects.equals(request.learningMaterialId(), CLEAR_LEARNING_MATERIAL_SENTINEL)
                     ? null
                     : request.learningMaterialId();
-            jdbcTemplate.update(
-                    "update task_templates set learning_material_id = ? where id = ? and curriculum_id = ?",
-                    link,
-                    templateId,
-                    curriculumId
-            );
+            entity.setLearningMaterialId(link);
             any = true;
         }
         if (!any) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No fields to update");
         }
-        return jdbcTemplate.query(
-                """
-                select id, curriculum_id, learning_material_id, sort_order, title, description, estimated_days, created_at, updated_at
-                from task_templates where id = ? and curriculum_id = ?
-                """,
-                this::mapTemplate,
-                templateId,
-                curriculumId
-        ).get(0);
+        try {
+            taskTemplateDao.update(entity);
+        } catch (UniqueConstraintException e) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Duplicate sort order for a task template in this curriculum");
+        }
+        return mapTemplate(entity);
     }
 
     public void deleteTaskTemplate(Long mentorId, Long curriculumId, Long templateId) {
         assertDraft(mentorId, curriculumId);
-        int deleted = jdbcTemplate.update(
-                "delete from task_templates where id = ? and curriculum_id = ?",
-                templateId,
-                curriculumId
-        );
-        if (deleted == 0) {
+        TaskTemplateEntity entity = taskTemplateDao.selectByIdAndCurriculumId(templateId, curriculumId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Task template not found"));
+        int deleted = taskTemplateDao.delete(entity);
+        if (deleted < 1) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Task template not found");
         }
     }
@@ -552,161 +369,116 @@ public class CurriculumService {
     @Transactional
     public void deleteDraft(Long mentorId, Long curriculumId) {
         assertDraft(mentorId, curriculumId);
-        Integer assignmentCount = jdbcTemplate.queryForObject(
-                "select count(*) from trainee_curriculum_assignments where curriculum_id = ?",
-                Integer.class,
-                curriculumId
-        );
-        if (assignmentCount != null && assignmentCount > 0) {
+        if (assignmentDao.countByCurriculum(curriculumId) > 0) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
                     "Cannot delete this draft because it is already referenced by trainee assignments"
             );
         }
 
-        jdbcTemplate.update("delete from task_templates where curriculum_id = ?", curriculumId);
+        List<TaskTemplateEntity> templates = taskTemplateDao.listByCurriculumId(curriculumId);
+        if (!templates.isEmpty()) {
+            taskTemplateDao.batchDelete(templates);
+        }
 
-        List<String> paths = jdbcTemplate.query(
-                "select storage_path from learning_materials where curriculum_id = ?",
-                (rs, i) -> rs.getString("storage_path"),
-                curriculumId
-        );
-        jdbcTemplate.update("delete from learning_materials where curriculum_id = ?", curriculumId);
+        List<String> paths = learningMaterialDao.listStoragePathsByCurriculumId(curriculumId);
+        List<LearningMaterialEntity> materials = learningMaterialDao.listByCurriculumId(curriculumId);
+        if (!materials.isEmpty()) {
+            learningMaterialDao.batchDelete(materials);
+        }
 
         Set<String> uniquePaths = new LinkedHashSet<>(paths);
         for (String path : uniquePaths) {
-            Integer remaining = jdbcTemplate.queryForObject(
-                    "select count(*) from learning_materials where storage_path = ?",
-                    Integer.class,
-                    path
-            );
-            if (remaining == null || remaining == 0) {
+            if (learningMaterialDao.countByStoragePath(path) == 0) {
                 pdfStorage.deleteIfExists(path);
             }
         }
 
-        int deletedCurriculum = jdbcTemplate.update(
-                "delete from curricula where id = ? and created_by = ? and status = 'DRAFT'",
-                curriculumId,
-                mentorId
-        );
-        if (deletedCurriculum == 0) {
+        CurriculumEntity curriculum = curriculumDao.selectByIdAndCreator(curriculumId, mentorId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Curriculum cannot be deleted"));
+        if (!"DRAFT".equals(curriculum.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Curriculum cannot be deleted");
+        }
+        int deletedCurriculum = curriculumDao.delete(curriculum);
+        if (deletedCurriculum < 1) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Curriculum cannot be deleted");
         }
     }
 
     public CurriculumResponse publish(Long mentorId, Long curriculumId) {
         assertDraft(mentorId, curriculumId);
-        Integer materialCount = jdbcTemplate.queryForObject(
-                "select count(*) from learning_materials where curriculum_id = ?",
-                Integer.class,
-                curriculumId
-        );
-        Integer templateCount = jdbcTemplate.queryForObject(
-                "select count(*) from task_templates where curriculum_id = ?",
-                Integer.class,
-                curriculumId
-        );
-        if (materialCount == null || materialCount < 1) {
+        if (learningMaterialDao.listByCurriculumId(curriculumId).isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Add at least one PDF learning material before publishing");
         }
-        if (templateCount == null || templateCount < 1) {
+        if (taskTemplateDao.listByCurriculumId(curriculumId).isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Add at least one task template before publishing");
         }
-        int updated = jdbcTemplate.update(
-                """
-                update curricula
-                set status = 'PUBLISHED', published_at = coalesce(published_at, CURRENT_TIMESTAMP)
-                where id = ? and created_by = ? and status = 'DRAFT'
-                """,
-                curriculumId,
-                mentorId
-        );
-        if (updated == 0) {
+        CurriculumEntity curriculum = curriculumDao.selectByIdAndCreator(curriculumId, mentorId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Curriculum cannot be published"));
+        if (!"DRAFT".equals(curriculum.getStatus())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Curriculum cannot be published");
         }
+        curriculum.setStatus("PUBLISHED");
+        if (curriculum.getPublishedAt() == null) {
+            curriculum.setPublishedAt(LocalDateTime.now());
+        }
+        curriculumDao.update(curriculum);
         return loadCurriculumResponse(mentorId, curriculumId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Curriculum not found"));
     }
 
     private void assertDraft(Long mentorId, Long curriculumId) {
-        List<String> rows = jdbcTemplate.query(
-                "select status from curricula where id = ? and created_by = ?",
-                (rs, i) -> rs.getString("status"),
-                curriculumId,
-                mentorId
-        );
-        if (rows.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Curriculum not found");
-        }
-        String currentStatus = rows.get(0);
-        if (!"DRAFT".equals(currentStatus)) {
+        CurriculumEntity curriculum = curriculumDao.selectByIdAndCreator(curriculumId, mentorId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Curriculum not found"));
+        if (!"DRAFT".equals(curriculum.getStatus())) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
-                    "Curriculum is " + currentStatus + "; materials and templates can only be modified while status is DRAFT"
+                    "Curriculum is " + curriculum.getStatus() + "; materials and templates can only be modified while status is DRAFT"
             );
         }
     }
 
     private java.util.Optional<CurriculumResponse> loadCurriculumResponse(Long mentorId, Long curriculumId) {
-        List<CurriculumResponse> rows = jdbcTemplate.query(
-                """
-                select id, curriculum_group_id, version_label, name, description, status, published_at, created_at, updated_at
-                from curricula
-                where id = ? and created_by = ?
-                """,
-                this::mapCurriculumResponse,
-                curriculumId,
-                mentorId
-        );
-        return rows.stream().findFirst();
+        return curriculumDao.selectByIdAndCreator(curriculumId, mentorId).map(this::mapCurriculumResponse);
     }
 
-    private CurriculumResponse mapCurriculumResponse(ResultSet rs, int rowNum) throws SQLException {
-        Timestamp pub = rs.getTimestamp("published_at");
-        Timestamp created = rs.getTimestamp("created_at");
-        Timestamp updated = rs.getTimestamp("updated_at");
+    private CurriculumResponse mapCurriculumResponse(CurriculumEntity row) {
         return new CurriculumResponse(
-                rs.getLong("id"),
-                rs.getLong("curriculum_group_id"),
-                rs.getString("version_label"),
-                rs.getString("name"),
-                rs.getString("description"),
-                rs.getString("status"),
-                pub == null ? null : pub.toLocalDateTime(),
-                created == null ? null : created.toLocalDateTime(),
-                updated == null ? null : updated.toLocalDateTime()
+                row.getId(),
+                row.getCurriculumGroupId(),
+                row.getVersionLabel(),
+                row.getName(),
+                row.getDescription(),
+                row.getStatus(),
+                row.getPublishedAt(),
+                row.getCreatedAt(),
+                row.getUpdatedAt()
         );
     }
 
-    private LearningMaterialResponse mapMaterial(ResultSet rs, int rowNum) throws SQLException {
-        Timestamp up = rs.getTimestamp("uploaded_at");
+    private LearningMaterialResponse mapMaterial(LearningMaterialEntity row) {
         return new LearningMaterialResponse(
-                rs.getLong("id"),
-                rs.getLong("curriculum_id"),
-                rs.getString("file_name"),
-                rs.getString("storage_path"),
-                rs.getLong("file_size_bytes"),
-                rs.getInt("sort_order"),
-                up == null ? null : up.toLocalDateTime()
+                row.getId(),
+                row.getCurriculumId(),
+                row.getFileName(),
+                row.getStoragePath(),
+                row.getFileSizeBytes(),
+                row.getSortOrder(),
+                row.getUploadedAt()
         );
     }
 
-    private TaskTemplateResponse mapTemplate(ResultSet rs, int rowNum) throws SQLException {
-        long lm = rs.getLong("learning_material_id");
-        boolean lmNull = rs.wasNull();
-        Timestamp created = rs.getTimestamp("created_at");
-        Timestamp updated = rs.getTimestamp("updated_at");
+    private TaskTemplateResponse mapTemplate(TaskTemplateEntity row) {
         return new TaskTemplateResponse(
-                rs.getLong("id"),
-                rs.getLong("curriculum_id"),
-                lmNull ? null : lm,
-                rs.getInt("sort_order"),
-                rs.getString("title"),
-                rs.getString("description"),
-                rs.getObject("estimated_days", Integer.class),
-                created == null ? null : created.toLocalDateTime(),
-                updated == null ? null : updated.toLocalDateTime()
+                row.getId(),
+                row.getCurriculumId(),
+                row.getLearningMaterialId(),
+                row.getSortOrder(),
+                row.getTitle(),
+                row.getDescription(),
+                row.getEstimatedDays(),
+                row.getCreatedAt(),
+                row.getUpdatedAt()
         );
     }
 
@@ -714,34 +486,20 @@ public class CurriculumService {
         if (requested != null) {
             return requested;
         }
-        Integer next = jdbcTemplate.queryForObject(
-                "select coalesce(max(sort_order), 0) + 1 from learning_materials where curriculum_id = ?",
-                Integer.class,
-                curriculumId
-        );
-        return next == null ? 1 : next;
+        Integer max = learningMaterialDao.maxSortOrderByCurriculumId(curriculumId);
+        return (max == null ? 0 : max) + 1;
     }
 
     private int resolveTemplateSortOrder(Long curriculumId, Integer requested) {
         if (requested != null) {
             return requested;
         }
-        Integer next = jdbcTemplate.queryForObject(
-                "select coalesce(max(sort_order), 0) + 1 from task_templates where curriculum_id = ?",
-                Integer.class,
-                curriculumId
-        );
-        return next == null ? 1 : next;
+        Integer max = taskTemplateDao.maxSortOrderByCurriculumId(curriculumId);
+        return (max == null ? 0 : max) + 1;
     }
 
     private void assertMaterialInCurriculum(Long curriculumId, Long materialId) {
-        Integer n = jdbcTemplate.queryForObject(
-                "select count(*) from learning_materials where id = ? and curriculum_id = ?",
-                Integer.class,
-                materialId,
-                curriculumId
-        );
-        if (n == null || n == 0) {
+        if (learningMaterialDao.selectByIdAndCurriculumId(materialId, curriculumId).isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Learning material does not belong to this curriculum");
         }
     }
@@ -812,14 +570,4 @@ public class CurriculumService {
         return "asc".equals(sortDir.trim().toLowerCase(Locale.ROOT)) ? "asc" : "desc";
     }
 
-    private record SourceCurriculumRow(long groupId, String name, String description, String status) {
-    }
-
-    private record MaterialCopyRow(long oldId, int sortOrder, String fileName, String storagePath, long fileSizeBytes,
-                                   Timestamp uploadedAt) {
-    }
-
-    private record TemplateCopyRow(Long oldLearningMaterialId, int sortOrder, String title, String description,
-                                   Integer estimatedDays) {
-    }
 }

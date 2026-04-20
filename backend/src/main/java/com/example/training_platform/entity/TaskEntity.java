@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.seasar.doma.Column;
 import org.seasar.doma.Entity;
 import org.seasar.doma.GeneratedValue;
 import org.seasar.doma.GenerationType;
@@ -25,9 +26,12 @@ public class TaskEntity {
     private Long taskTemplateId;
     private String title;
     private String description;
+    private Integer estimatedDays;
     private String status;
     private LocalDateTime startedAt;
     private LocalDateTime completedAt;
+    @Column(insertable = false, updatable = false)
     private LocalDateTime createdAt;
+    @Column(insertable = false, updatable = false)
     private LocalDateTime updatedAt;
 }

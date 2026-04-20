@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.seasar.doma.Column;
 import org.seasar.doma.Entity;
 import org.seasar.doma.GeneratedValue;
 import org.seasar.doma.GenerationType;
@@ -26,6 +27,10 @@ public class CurriculumEntity {
     private String status;
     private LocalDateTime publishedAt;
     private Long createdBy;
+    private Long curriculumGroupId;
+    private String versionLabel;
+    @Column(insertable = false, updatable = false)
     private LocalDateTime createdAt;
+    @Column(insertable = false, updatable = false)
     private LocalDateTime updatedAt;
 }
