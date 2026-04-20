@@ -20,6 +20,7 @@ import { ApiError } from '../../api/client'
 import * as mentorApi from '../../api/modules/mentor'
 import type { CurriculumResponse, TraineeResponse } from '../../api/types'
 import PageHeader from '../../components/layout/PageHeader.vue'
+import { groupCurriculaByFamily } from '../../utils/curriculumGroups'
 
 const toast = useToast()
 
@@ -36,7 +37,8 @@ const assignDialogVisible = ref(false)
 const createEmail = ref('')
 const createName = ref('')
 const assignTrainee = ref<TraineeResponse | null>(null)
-const assignCurriculum = ref<CurriculumResponse | null>(null)
+const assignFamilyGroupId = ref<number | null>(null)
+const assignVersionId = ref<number | null>(null)
 const assignMode = ref<'assign' | 'replace'>('assign')
 
 const first = ref(0)
@@ -45,6 +47,44 @@ const actionMenu = ref()
 const actionMenuItems = ref<MenuItem[]>([])
 
 const summaryCount = computed(() => totalRecords.value)
+
+const assignCurriculumResolved = computed(() => {
+  if (assignVersionId.value == null) return null
+  return curricula.value.find((c) => c.id === assignVersionId.value) ?? null
+})
+
+const assignFamilyOptions = computed(() =>
+  groupCurriculaByFamily(curricula.value).map((g) => ({
+    label:
+      g.versionCount > 1
+        ? `${g.representative.name} (${g.versionCount} published versions)`
+        : g.representative.name,
+    value: g.representative.curriculumGroupId,
+  })),
+)
+
+function versionsInGroup(groupId: number): CurriculumResponse[] {
+  return [...curricula.value]
+    .filter((c) => (c.curriculumGroupId ?? c.id) === groupId)
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+}
+
+const assignVersionOptions = computed(() => {
+  if (assignFamilyGroupId.value == null) return []
+  return versionsInGroup(assignFamilyGroupId.value).map((c) => ({
+    label: `${c.versionLabel} · ${c.status} · ${formatDate(c.updatedAt)}`,
+    value: c.id,
+  }))
+})
+
+watch(assignFamilyGroupId, (gid) => {
+  if (gid == null) {
+    assignVersionId.value = null
+    return
+  }
+  const v = versionsInGroup(gid)
+  assignVersionId.value = v[0]?.id ?? null
+})
 
 const activeFilterOptions = [
   { label: 'All statuses', value: 'ALL' as const },
@@ -192,26 +232,36 @@ async function resetPassword(row: TraineeResponse): Promise<void> {
   }
 }
 
-function openAssignDialog(row: TraineeResponse): void {
+async function openAssignDialog(row: TraineeResponse): Promise<void> {
   assignTrainee.value = row
-  assignCurriculum.value = curricula.value[0] ?? null
   assignMode.value = 'assign'
+  await loadCurricula()
   assignDialogVisible.value = true
+  const grouped = groupCurriculaByFamily(curricula.value)
+  if (grouped.length > 0) {
+    assignFamilyGroupId.value = grouped[0].representative.curriculumGroupId
+  } else {
+    assignFamilyGroupId.value = null
+    assignVersionId.value = null
+  }
 }
 
 function closeAssignDialog(): void {
   assignDialogVisible.value = false
   assignMode.value = 'assign'
+  assignFamilyGroupId.value = null
+  assignVersionId.value = null
 }
 
 async function confirmAssign(): Promise<void> {
-  if (!assignTrainee.value || !assignCurriculum.value) return
+  const curriculum = assignCurriculumResolved.value
+  if (!assignTrainee.value || !curriculum) return
   error.value = ''
   try {
     if (assignMode.value === 'replace') {
-      await mentorApi.replaceActiveAssignment(assignTrainee.value.id, assignCurriculum.value.id)
+      await mentorApi.replaceActiveAssignment(assignTrainee.value.id, curriculum.id)
     } else {
-      await mentorApi.assignCurriculum(assignTrainee.value.id, assignCurriculum.value.id)
+      await mentorApi.assignCurriculum(assignTrainee.value.id, curriculum.id)
     }
     assignDialogVisible.value = false
     const actionLabel = assignMode.value === 'replace' ? 'Curriculum replaced' : 'Curriculum assigned'
@@ -220,7 +270,7 @@ async function confirmAssign(): Promise<void> {
     toast.add({
       severity: 'success',
       summary: actionLabel,
-      detail: `${assignCurriculum.value.name} ${actionVerb} ${assignTrainee.value.fullName}.`,
+      detail: `${curriculum.name} (${curriculum.versionLabel}) ${actionVerb} ${assignTrainee.value.fullName}.`,
       life: 3500,
     })
   } catch (e) {
@@ -393,7 +443,7 @@ function onPageChange(event: { first: number; rows: number }): void {
       </template>
     </Dialog>
 
-    <Dialog v-model:visible="assignDialogVisible" modal header="Assign curriculum" :style="{ width: '28rem' }">
+    <Dialog v-model:visible="assignDialogVisible" modal header="Assign curriculum" :style="{ width: '32rem' }">
       <div class="dialog-fields">
         <p class="muted">
           Assign curriculum for <strong>{{ assignTrainee?.fullName }}</strong>
@@ -402,13 +452,29 @@ function onPageChange(event: { first: number; rows: number }): void {
           This trainee already has an active assignment. Click <strong>Replace</strong> to cancel the current one and
           regenerate tasks from the selected curriculum.
         </Message>
-        <Select
-          v-model="assignCurriculum"
-          :options="curricula"
-          option-label="name"
-          placeholder="Select curriculum"
-          class="w-full"
-        />
+        <label class="assign-field">
+          Curriculum
+          <Select
+            v-model="assignFamilyGroupId"
+            :options="assignFamilyOptions"
+            option-label="label"
+            option-value="value"
+            placeholder="Select curriculum"
+            class="w-full"
+          />
+        </label>
+        <label class="assign-field">
+          Version
+          <Select
+            v-model="assignVersionId"
+            :options="assignVersionOptions"
+            option-label="label"
+            option-value="value"
+            placeholder="Select published version"
+            class="w-full"
+            :disabled="assignFamilyGroupId == null || assignVersionOptions.length === 0"
+          />
+        </label>
       </div>
       <template #footer>
         <Button label="Cancel" text @click="closeAssignDialog" />
@@ -416,7 +482,7 @@ function onPageChange(event: { first: number; rows: number }): void {
           :label="assignMode === 'replace' ? 'Replace' : 'Assign'"
           :severity="assignMode === 'replace' ? 'warn' : undefined"
           @click="confirmAssign"
-          :disabled="!assignCurriculum || !assignTrainee"
+          :disabled="!assignCurriculumResolved || !assignTrainee"
         />
       </template>
     </Dialog>
@@ -513,6 +579,13 @@ function onPageChange(event: { first: number; rows: number }): void {
 .muted {
   margin: 0;
   color: var(--text-muted);
+}
+
+.assign-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.9rem;
 }
 
 @media (max-width: 900px) {
