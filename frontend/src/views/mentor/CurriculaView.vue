@@ -15,15 +15,15 @@ import Toast from 'primevue/toast'
 import { useToast } from 'primevue/usetoast'
 import { ApiError } from '../../api/client'
 import * as mentorApi from '../../api/modules/mentor'
-import type { CurriculumResponse } from '../../api/types'
 import PageHeader from '../../components/layout/PageHeader.vue'
+import { groupCurriculaByFamily, type CurriculumGroupRow } from '../../utils/curriculumGroups'
 
 type StatusFilter = 'ALL' | 'DRAFT' | 'PUBLISHED'
 
 const router = useRouter()
 const toast = useToast()
 
-const rows = ref<CurriculumResponse[]>([])
+const allGrouped = ref<CurriculumGroupRow[]>([])
 const totalRecords = ref(0)
 const loading = ref(false)
 const error = ref('')
@@ -42,6 +42,11 @@ const statusOptions: Array<{ label: string; value: StatusFilter }> = [
 
 const summaryCount = computed(() => totalRecords.value)
 
+const paginatedGroups = computed(() => {
+  const start = first.value
+  return allGrouped.value.slice(start, start + pageRows.value)
+})
+
 function formatDate(value?: string | null): string {
   if (!value) return '-'
   const date = new Date(value)
@@ -59,28 +64,27 @@ async function load(): Promise<void> {
   error.value = ''
   loading.value = true
   try {
-    const page = Math.floor(first.value / pageRows.value)
-    const res = await mentorApi.listCurricula({
-      q: query.value,
+    const items = await mentorApi.listAllCurricula({
+      q: query.value.trim() || undefined,
       status: statusFilter.value === 'ALL' ? undefined : statusFilter.value,
-      page,
-      size: pageRows.value,
       sortBy: 'updatedAt',
       sortDir: 'desc',
+      size: 100,
     })
-    rows.value = res.items
-    totalRecords.value = res.totalElements
+    const grouped = groupCurriculaByFamily(items)
+    allGrouped.value = grouped
+    totalRecords.value = grouped.length
 
-    // If filters reduce total while user is on a later page, move back to the last valid page.
-    if (res.items.length === 0 && res.totalElements > 0 && first.value >= res.totalElements) {
-      const lastFirst = Math.max(0, (Math.ceil(res.totalElements / pageRows.value) - 1) * pageRows.value)
+    if (grouped.length > 0 && first.value >= grouped.length) {
+      const lastFirst = Math.max(0, (Math.ceil(grouped.length / pageRows.value) - 1) * pageRows.value)
       if (lastFirst !== first.value) {
         first.value = lastFirst
-        await load()
       }
     }
   } catch (e) {
     error.value = e instanceof ApiError ? e.message : 'Failed to load curricula'
+    allGrouped.value = []
+    totalRecords.value = 0
   } finally {
     loading.value = false
   }
@@ -114,16 +118,17 @@ async function resetFilters(): Promise<void> {
   await load()
 }
 
-async function publishCurriculum(row: CurriculumResponse): Promise<void> {
-  if (row.status !== 'DRAFT') return
-  rowPendingId.value = row.id
+async function publishCurriculum(row: CurriculumGroupRow): Promise<void> {
+  const r = row.representative
+  if (r.status !== 'DRAFT') return
+  rowPendingId.value = r.id
   error.value = ''
   try {
-    await mentorApi.publishCurriculum(row.id)
+    await mentorApi.publishCurriculum(r.id)
     toast.add({
       severity: 'success',
       summary: 'Curriculum published',
-      detail: `${row.name} is now available for assignments.`,
+      detail: `${r.name} is now available for assignments.`,
       life: 3500,
     })
     await load()
@@ -134,8 +139,8 @@ async function publishCurriculum(row: CurriculumResponse): Promise<void> {
   }
 }
 
-function goDetail(row: CurriculumResponse): void {
-  void router.push(`/mentor/curricula/${row.id}`)
+function goDetail(row: CurriculumGroupRow): void {
+  void router.push(`/mentor/curricula/${row.representative.id}`)
 }
 
 /** Primary create action: multi-step wizard (basics → PDFs → templates → publish). */
@@ -178,42 +183,50 @@ function onPageChange(event: { first: number; rows: number }): void {
         </div>
         <Button icon="pi pi-plus" label="Create curriculum" @click="createCurriculum" />
       </div>
-      <p class="table-count">All curricula: <strong>{{ summaryCount }}</strong></p>
+      <p class="table-count">
+        Curriculum families: <strong>{{ summaryCount }}</strong>
+        <span class="table-count-hint"> (latest version per family)</span>
+      </p>
 
       <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
 
       <DataTable
-        :value="rows"
-        data-key="id"
+        :value="paginatedGroups"
+        data-key="representative.id"
         :loading="loading"
         class="p-datatable-sm"
         responsive-layout="scroll"
-        sort-field="updatedAt"
-        :sort-order="-1"
       >
-        <Column field="name" header="Curriculum" style="min-width: 14rem">
+        <Column header="Curriculum" style="min-width: 14rem">
           <template #body="{ data }">
             <div>
-              <p class="name">{{ data.name }}</p>
+              <p class="name">{{ data.representative.name }}</p>
+              <p v-if="data.versionCount > 1" class="family-meta">
+                {{ data.versionCount }} versions · showing newest
+              </p>
             </div>
           </template>
         </Column>
 
-        <Column header="Version" style="width: 7rem">
+        <Column header="Latest version" style="width: 9rem">
           <template #body="{ data }">
-            <span class="version-cell">{{ data.versionLabel }}</span>
+            <span class="version-cell">{{ data.representative.versionLabel }}</span>
           </template>
         </Column>
 
         <Column header="Status" style="width: 8rem">
           <template #body="{ data }">
-            <Tag :value="data.status" :severity="statusSeverity(data.status)" rounded />
+            <Tag
+              :value="data.representative.status"
+              :severity="statusSeverity(data.representative.status)"
+              rounded
+            />
           </template>
         </Column>
 
         <Column header="Updated" style="width: 9rem">
           <template #body="{ data }">
-            {{ formatDate(data.updatedAt) }}
+            {{ formatDate(data.representative.updatedAt) }}
           </template>
         </Column>
 
@@ -222,12 +235,12 @@ function onPageChange(event: { first: number; rows: number }): void {
             <div class="actions">
               <Button label="View detail" text size="small" @click="goDetail(data)" />
               <Button
-                v-if="data.status === 'DRAFT'"
+                v-if="data.representative.status === 'DRAFT'"
                 label="Publish"
                 severity="success"
                 size="small"
                 outlined
-                :loading="rowPendingId === data.id"
+                :loading="rowPendingId === data.representative.id"
                 @click="publishCurriculum(data)"
               />
             </div>
@@ -286,6 +299,18 @@ function onPageChange(event: { first: number; rows: number }): void {
 .table-count {
   margin: 0 0 0.75rem;
   color: var(--text-muted);
+}
+
+.table-count-hint {
+  font-size: 0.85rem;
+  font-weight: normal;
+}
+
+.family-meta {
+  margin: 0.2rem 0 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-weight: normal;
 }
 
 .name {

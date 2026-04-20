@@ -19,7 +19,12 @@ import Toast from 'primevue/toast'
 import { useToast } from 'primevue/usetoast'
 import { ApiError } from '../../api/client'
 import * as mentorApi from '../../api/modules/mentor'
-import type { CurriculumDetailResponse, LearningMaterialResponse, TaskTemplateResponse } from '../../api/types'
+import type {
+  CurriculumDetailResponse,
+  CurriculumResponse,
+  LearningMaterialResponse,
+  TaskTemplateResponse,
+} from '../../api/types'
 import PageHeader from '../../components/layout/PageHeader.vue'
 
 const route = useRoute()
@@ -30,6 +35,7 @@ const activeTab = ref('overview')
 const showFullHeaderDescription = ref(false)
 
 const detail = ref<CurriculumDetailResponse | null>(null)
+const siblingVersions = ref<CurriculumResponse[]>([])
 const loading = ref(false)
 const error = ref('')
 
@@ -87,6 +93,15 @@ const headerDescriptionShort = computed(() => {
 const canExpandHeaderDescription = computed(() => overviewDescription.value.length > 160)
 const headerTagSeverity = computed(() => (isPublished.value ? 'success' : 'warn'))
 
+const versionSelectOptions = computed(() =>
+  siblingVersions.value.map((v) => ({
+    label: `${v.versionLabel} · ${v.status}`,
+    value: v.id,
+  })),
+)
+
+const showVersionSwitcher = computed(() => versionSelectOptions.value.length > 1)
+
 function formatDate(value?: string | null): string {
   if (!value) return '-'
   const date = new Date(value)
@@ -105,6 +120,22 @@ function mapMaterialName(materialId: number | null): string {
   return detail.value?.materials.find((item) => item.id === materialId)?.fileName ?? `#${materialId}`
 }
 
+function parseUpdatedAt(iso: string): number {
+  const t = new Date(iso).getTime()
+  return Number.isNaN(t) ? 0 : t
+}
+
+async function loadSiblingVersions(groupId: number): Promise<void> {
+  try {
+    const all = await mentorApi.listAllCurricula({ sortBy: 'updatedAt', sortDir: 'desc', size: 100 })
+    siblingVersions.value = all
+      .filter((c) => c.curriculumGroupId === groupId)
+      .sort((a, b) => parseUpdatedAt(b.updatedAt) - parseUpdatedAt(a.updatedAt))
+  } catch {
+    siblingVersions.value = []
+  }
+}
+
 async function load(): Promise<void> {
   error.value = ''
   loading.value = true
@@ -113,12 +144,19 @@ async function load(): Promise<void> {
     detail.value = payload
     editName.value = payload.curriculum.name
     editDescription.value = payload.curriculum.description ?? ''
+    await loadSiblingVersions(payload.curriculum.curriculumGroupId)
   } catch (e) {
     error.value = e instanceof ApiError ? e.message : 'Failed to load curriculum'
     detail.value = null
+    siblingVersions.value = []
   } finally {
     loading.value = false
   }
+}
+
+function onPickVersion(nextId: number | null): void {
+  if (nextId == null || nextId === curriculumId.value) return
+  void router.push({ name: 'mentor-curriculum-detail', params: { id: String(nextId) } })
 }
 
 onMounted(() => {
@@ -370,6 +408,19 @@ async function confirmCreateNewVersion(): Promise<void> {
         :tag-value="detail.curriculum.status"
         :tag-severity="headerTagSeverity"
       >
+        <template #actions>
+          <div v-if="showVersionSwitcher" class="version-switch">
+            <span class="version-switch-label">Version</span>
+            <Select
+              :model-value="curriculumId"
+              :options="versionSelectOptions"
+              option-label="label"
+              option-value="value"
+              class="version-select"
+              @update:model-value="onPickVersion"
+            />
+          </div>
+        </template>
         <template #description>
           <div class="header-description">
             <p>{{ showFullHeaderDescription ? overviewDescription : headerDescriptionShort }}</p>
@@ -386,8 +437,11 @@ async function confirmCreateNewVersion(): Promise<void> {
 
       <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
       <Message v-if="isPublished" severity="info" :closable="false">
-        This curriculum is published (version {{ detail.curriculum.versionLabel }}, family id
-        {{ detail.curriculum.curriculumGroupId }}). Editing is locked; create a new draft version to change content.
+        This curriculum is published (version {{ detail.curriculum.versionLabel }}). Editing is locked; create a new
+        draft version to change content.
+        <span v-if="showVersionSwitcher">
+          Use the version dropdown in the header to open another version in this family.
+        </span>
       </Message>
 
       <Tabs v-model:value="activeTab">
@@ -668,6 +722,23 @@ async function confirmCreateNewVersion(): Promise<void> {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+}
+
+.version-switch {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.version-switch-label {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.version-select {
+  min-width: 12rem;
 }
 
 .header-description {
