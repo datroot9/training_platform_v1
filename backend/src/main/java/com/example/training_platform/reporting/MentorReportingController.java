@@ -5,6 +5,7 @@ import java.util.List;
 
 import com.example.training_platform.auth.AuthenticatedUser;
 import com.example.training_platform.common.dto.ApiResponse;
+import com.example.training_platform.reporting.dto.DailyReportResponse;
 import com.example.training_platform.reporting.dto.ReviewWeeklySummaryRequest;
 import com.example.training_platform.reporting.dto.WeeklySummaryGenerationPlaceholderResponse;
 import com.example.training_platform.reporting.dto.WeeklySummaryResponse;
@@ -22,10 +23,11 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/mentor/trainees/{traineeId}/assignments/{assignmentId}/weekly-summaries")
+@RequestMapping("/api/mentor/trainees/{traineeId}/assignments/{assignmentId}")
 @SecurityRequirement(name = "bearerAuth")
 @Tag(name = "Mentor weekly reports", description = "Review and score trainee weekly summaries")
 public class MentorReportingController {
@@ -36,7 +38,7 @@ public class MentorReportingController {
         this.reportingService = reportingService;
     }
 
-    @GetMapping
+    @GetMapping("/weekly-summaries")
     @Operation(summary = "List trainee weekly summaries")
     public ResponseEntity<ApiResponse<List<WeeklySummaryResponse>>> listWeeklySummaries(
             Authentication authentication,
@@ -52,7 +54,31 @@ public class MentorReportingController {
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Weekly summaries fetched", data));
     }
 
-    @PutMapping("/{weekStart}/review")
+    @GetMapping("/daily-reports")
+    @Operation(summary = "List trainee daily reports by date range")
+    public ResponseEntity<ApiResponse<List<DailyReportResponse>>> listDailyReports(
+            Authentication authentication,
+            @PathVariable("traineeId") Long traineeId,
+            @PathVariable("assignmentId") Long assignmentId,
+            @RequestParam("fromDate")
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate fromDate,
+            @RequestParam("toDate")
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate toDate
+    ) {
+        AuthenticatedUser current = (AuthenticatedUser) authentication.getPrincipal();
+        List<DailyReportResponse> data = reportingService.listDailyReportsForMentor(
+                current.userId(),
+                traineeId,
+                assignmentId,
+                fromDate,
+                toDate
+        );
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Daily reports fetched", data));
+    }
+
+    @PutMapping("/weekly-summaries/{weekStart}/review")
     @Operation(summary = "Submit mentor weekly score and feedback")
     public ResponseEntity<ApiResponse<WeeklySummaryResponse>> reviewWeeklySummary(
             Authentication authentication,
@@ -74,7 +100,7 @@ public class MentorReportingController {
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Weekly summary reviewed", data));
     }
 
-    @PostMapping("/generate")
+    @PostMapping("/weekly-summaries/generate")
     @Operation(summary = "Generate weekly summary (placeholder)")
     public ResponseEntity<ApiResponse<WeeklySummaryGenerationPlaceholderResponse>> generateWeeklySummary(
             Authentication authentication,

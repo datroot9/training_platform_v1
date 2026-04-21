@@ -8,6 +8,7 @@ const router = useRouter()
 const primaryLinks = [
   { label: 'Dashboard', to: '/mentor', icon: 'dashboard' },
   { label: 'Trainees', to: '/mentor/trainees', icon: 'users' },
+  { label: 'Reports', to: '/mentor/reports', icon: 'roadmap' },
   { label: 'Curricula', to: '/mentor/curricula', icon: 'curriculum', activePrefixes: ['/mentor/curricula/'] },
 ]
 const secondaryLinks = [{ label: 'Account Security', to: '/account/change-password', icon: 'security' }]

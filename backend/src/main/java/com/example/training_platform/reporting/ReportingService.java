@@ -124,6 +124,23 @@ public class ReportingService {
         return weeklyPerformanceSummaryDao.listByAssignment(assignmentId).stream().map(this::mapWeeklySummary).toList();
     }
 
+    public List<DailyReportResponse> listDailyReportsForMentor(
+            Long mentorId,
+            Long traineeId,
+            Long assignmentId,
+            LocalDate fromDate,
+            LocalDate toDate
+    ) {
+        assertMentorCanAccessAssignment(mentorId, traineeId, assignmentId);
+        if (fromDate.isAfter(toDate)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "fromDate must be on or before toDate");
+        }
+        return dailyReportDao.listByAssignmentAndDateRange(assignmentId, fromDate, toDate)
+                .stream()
+                .map(this::mapDailyReport)
+                .toList();
+    }
+
     @Transactional
     public WeeklySummaryResponse reviewWeeklySummary(
             Long mentorId,

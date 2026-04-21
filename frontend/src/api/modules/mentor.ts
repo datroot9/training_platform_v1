@@ -5,6 +5,7 @@ import type {
   CreateTraineeResponse,
   CurriculumDetailResponse,
   CurriculumResponse,
+  DailyReportResponse,
   LearningMaterialResponse,
   PagedResponse,
   ReviewWeeklySummaryRequest,
@@ -56,6 +57,12 @@ export async function listTrainees(params: ListTraineesParams = {}): Promise<Pag
     sortDir: params.sortDir,
   })
   return requestJson<PagedResponse<TraineeResponse>>(`/api/mentor/trainees${q}`)
+}
+
+export async function listActiveTrainees(
+  params: Omit<ListTraineesParams, 'active'> = {},
+): Promise<PagedResponse<TraineeResponse>> {
+  return listTrainees({ ...params, active: true })
 }
 
 export async function createTrainee(body: { email: string; fullName: string }): Promise<CreateTraineeResponse> {
@@ -263,6 +270,18 @@ export async function listWeeklySummariesForTrainee(
 ): Promise<WeeklySummaryResponse[]> {
   return requestJson<WeeklySummaryResponse[]>(
     `/api/mentor/trainees/${traineeId}/assignments/${assignmentId}/weekly-summaries`,
+  )
+}
+
+export async function listDailyReportsForTraineeByRange(
+  traineeId: number,
+  assignmentId: number,
+  fromDate: string,
+  toDate: string,
+): Promise<DailyReportResponse[]> {
+  const q = buildQuery({ fromDate, toDate })
+  return requestJson<DailyReportResponse[]>(
+    `/api/mentor/trainees/${traineeId}/assignments/${assignmentId}/daily-reports${q}`,
   )
 }
 

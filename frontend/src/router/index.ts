@@ -23,6 +23,11 @@ const router = createRouter({
       children: [
         { path: '', name: 'mentor-home', component: () => import('../views/mentor/MentorHomeView.vue') },
         { path: 'trainees', name: 'mentor-trainees', component: () => import('../views/mentor/TraineesView.vue') },
+        {
+          path: 'reports',
+          name: 'mentor-reports',
+          component: () => import('../views/mentor/MentorReportOverviewView.vue'),
+        },
         { path: 'curricula', name: 'mentor-curricula', component: () => import('../views/mentor/CurriculaView.vue') },
         {
           path: 'curricula/wizard',
