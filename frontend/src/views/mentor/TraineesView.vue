@@ -7,6 +7,7 @@ import DataTable from 'primevue/datatable'
 import Dialog from 'primevue/dialog'
 import IconField from 'primevue/iconfield'
 import InputIcon from 'primevue/inputicon'
+import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
 import Menu from 'primevue/menu'
 import Message from 'primevue/message'
@@ -15,6 +16,7 @@ import ProgressSpinner from 'primevue/progressspinner'
 import Paginator from 'primevue/paginator'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
+import Textarea from 'primevue/textarea'
 import Toast from 'primevue/toast'
 import { useToast } from 'primevue/usetoast'
 import type { MenuItem } from 'primevue/menuitem'
@@ -25,6 +27,7 @@ import type {
   AssignmentTaskResponse,
   CurriculumResponse,
   TraineeResponse,
+  WeeklySummaryResponse,
 } from '../../api/types'
 import PageHeader from '../../components/layout/PageHeader.vue'
 import { taskStatusLabel, taskStatusTagSeverity } from '../../composables/useTraineeAssignment'
@@ -60,6 +63,14 @@ const progressAssignment = ref<AssignmentResponse | null>(null)
 const progressTasks = ref<AssignmentTaskResponse[]>([])
 const progressLoading = ref(false)
 const progressError = ref('')
+const weeklySummaries = ref<WeeklySummaryResponse[]>([])
+const weeklyLoading = ref(false)
+const weeklyError = ref('')
+const weeklyGenerationLoading = ref(false)
+const weeklyReviewWeekStart = ref('')
+const weeklyReviewGrade = ref<number | null>(null)
+const weeklyReviewFeedback = ref('')
+const weeklyReviewFinalize = ref(true)
 
 const orderedProgressTasks = computed(() =>
   [...progressTasks.value].sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id),
@@ -130,6 +141,37 @@ function formatDate(value?: string | null): string {
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(date)
 }
 
+function getMondayIso(date: Date = new Date()): string {
+  const d = new Date(date)
+  const day = d.getDay()
+  const shift = day === 0 ? 6 : day - 1
+  d.setDate(d.getDate() - shift)
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const dayOfMonth = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${dayOfMonth}`
+}
+
+async function loadWeeklySummaries(): Promise<void> {
+  if (!progressTrainee.value || !progressAssignment.value) {
+    weeklySummaries.value = []
+    weeklyError.value = ''
+    return
+  }
+  weeklyLoading.value = true
+  weeklyError.value = ''
+  try {
+    weeklySummaries.value = await mentorApi.listWeeklySummariesForTrainee(
+      progressTrainee.value.id,
+      progressAssignment.value.id,
+    )
+  } catch (e) {
+    weeklyError.value = e instanceof ApiError ? e.message : 'Failed to load weekly summaries'
+  } finally {
+    weeklyLoading.value = false
+  }
+}
+
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).slice(0, 2)
   return parts.map((p) => p[0]?.toUpperCase() ?? '').join('') || 'TR'
@@ -146,11 +188,18 @@ async function openProgressDialog(row: TraineeResponse): Promise<void> {
   progressError.value = ''
   progressAssignment.value = null
   progressTasks.value = []
+  weeklySummaries.value = []
+  weeklyError.value = ''
+  weeklyReviewWeekStart.value = getMondayIso()
+  weeklyReviewGrade.value = null
+  weeklyReviewFeedback.value = ''
+  weeklyReviewFinalize.value = true
   try {
     const a = await mentorApi.getTraineeActiveAssignmentOrNull(row.id)
     progressAssignment.value = a
     if (a) {
       progressTasks.value = await mentorApi.getTraineeAssignmentTasks(row.id, a.id)
+      await loadWeeklySummaries()
     }
   } catch (e) {
     progressError.value = e instanceof ApiError ? e.message : 'Failed to load progress'
@@ -164,6 +213,55 @@ function closeProgressDialog(): void {
   progressAssignment.value = null
   progressTasks.value = []
   progressError.value = ''
+  weeklySummaries.value = []
+  weeklyError.value = ''
+}
+
+async function triggerWeeklyGeneration(): Promise<void> {
+  if (!progressTrainee.value || !progressAssignment.value) return
+  weeklyGenerationLoading.value = true
+  try {
+    const res = await mentorApi.generateWeeklySummaryPlaceholder(progressTrainee.value.id, progressAssignment.value.id)
+    toast.add({
+      severity: 'info',
+      summary: 'Weekly generation',
+      detail: res.message,
+      life: 3500,
+    })
+  } catch (e) {
+    weeklyError.value = e instanceof ApiError ? e.message : 'Could not call generation endpoint'
+  } finally {
+    weeklyGenerationLoading.value = false
+  }
+}
+
+async function submitWeeklyReview(): Promise<void> {
+  if (!progressTrainee.value || !progressAssignment.value || !weeklyReviewWeekStart.value || weeklyReviewGrade.value == null) return
+  weeklyError.value = ''
+  weeklyLoading.value = true
+  try {
+    await mentorApi.reviewWeeklySummary(
+      progressTrainee.value.id,
+      progressAssignment.value.id,
+      weeklyReviewWeekStart.value,
+      {
+        mentorGrade: weeklyReviewGrade.value,
+        mentorFeedback: weeklyReviewFeedback.value.trim(),
+        finalizeWeek: weeklyReviewFinalize.value,
+      },
+    )
+    toast.add({
+      severity: 'success',
+      summary: 'Weekly review saved',
+      detail: `Week ${weeklyReviewWeekStart.value} was reviewed.`,
+      life: 2800,
+    })
+    await loadWeeklySummaries()
+  } catch (e) {
+    weeklyError.value = e instanceof ApiError ? e.message : 'Could not save weekly review'
+  } finally {
+    weeklyLoading.value = false
+  }
 }
 
 async function load(): Promise<void> {
@@ -635,6 +733,79 @@ function onPageChange(event: { first: number; rows: number }): void {
               <Tag :value="taskStatusLabel(task.status)" :severity="taskStatusTagSeverity(task.status)" rounded />
             </li>
           </ul>
+
+          <section class="weekly-review-card">
+            <div class="weekly-review-head">
+              <h4>Weekly review</h4>
+              <Button
+                label="Trigger summary generation"
+                icon="pi pi-cog"
+                text
+                size="small"
+                :loading="weeklyGenerationLoading"
+                @click="triggerWeeklyGeneration"
+              />
+            </div>
+
+            <Message v-if="weeklyError" severity="error" :closable="false" class="mb-msg">{{ weeklyError }}</Message>
+
+            <div class="weekly-review-form">
+              <label>
+                Week start
+                <input v-model="weeklyReviewWeekStart" type="date" />
+              </label>
+              <label>
+                Mentor grade (0 - 10)
+                <InputNumber
+                  :model-value="weeklyReviewGrade"
+                  :min="0"
+                  :max="10"
+                  :min-fraction-digits="0"
+                  :max-fraction-digits="2"
+                  @update:model-value="weeklyReviewGrade = $event as number | null"
+                />
+              </label>
+              <label class="full">
+                Mentor feedback
+                <Textarea v-model="weeklyReviewFeedback" rows="3" auto-resize />
+              </label>
+              <label class="checkbox">
+                <input v-model="weeklyReviewFinalize" type="checkbox" />
+                Finalize this week (lock trainee edits)
+              </label>
+            </div>
+
+            <div class="weekly-review-actions">
+              <Button
+                label="Save weekly review"
+                :loading="weeklyLoading"
+                :disabled="!weeklyReviewWeekStart || weeklyReviewGrade == null || !weeklyReviewFeedback.trim()"
+                @click="submitWeeklyReview"
+              />
+            </div>
+
+            <div class="weekly-review-list">
+              <p class="weekly-review-list-title">Existing weekly summaries</p>
+              <p v-if="weeklyLoading" class="muted small">Loading weekly summaries...</p>
+              <p v-else-if="weeklySummaries.length === 0" class="muted small">
+                No weekly summaries yet. Use the form above to start a review.
+              </p>
+              <ul v-else class="weekly-summary-list">
+                <li v-for="item in weeklySummaries" :key="item.id" class="weekly-summary-row">
+                  <div class="weekly-summary-head">
+                    <strong>{{ item.weekStart }} - {{ item.weekEnd }}</strong>
+                    <Tag :value="item.reviewStatus" :severity="item.reviewStatus === 'REVIEWED' ? 'success' : 'secondary'" rounded />
+                  </div>
+                  <p class="weekly-summary-meta">
+                    Grade: {{ item.mentorGrade != null ? `${item.mentorGrade}/10` : 'Not graded' }}
+                    ·
+                    {{ item.finalizedAt ? 'Finalized' : 'Open' }}
+                  </p>
+                  <p class="weekly-summary-text">{{ item.mentorFeedback || 'No feedback yet.' }}</p>
+                </li>
+              </ul>
+            </div>
+          </section>
         </template>
       </template>
       <template #footer>
@@ -879,6 +1050,101 @@ function onPageChange(event: { first: number; rows: number }): void {
   line-height: 1.35;
 }
 
+.weekly-review-card {
+  margin-top: 1rem;
+  border: 1px solid var(--ui-border-soft);
+  border-radius: var(--ui-radius-md);
+  padding: 0.75rem;
+  background: #fbfcff;
+}
+
+.weekly-review-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.weekly-review-head h4 {
+  margin: 0;
+}
+
+.weekly-review-form {
+  margin-top: 0.65rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.weekly-review-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.86rem;
+}
+
+.weekly-review-form .full {
+  grid-column: 1 / -1;
+}
+
+.weekly-review-form .checkbox {
+  grid-column: 1 / -1;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.weekly-review-form input[type='date'] {
+  border: 1px solid var(--ui-border-soft);
+  border-radius: 8px;
+  padding: 0.35rem 0.45rem;
+}
+
+.weekly-review-actions {
+  margin-top: 0.6rem;
+}
+
+.weekly-review-list {
+  margin-top: 0.7rem;
+  border-top: 1px solid var(--ui-border-soft);
+  padding-top: 0.65rem;
+}
+
+.weekly-review-list-title {
+  margin: 0;
+  font-weight: 600;
+}
+
+.weekly-summary-list {
+  margin: 0.45rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.weekly-summary-row {
+  border: 1px solid var(--ui-border-soft);
+  border-radius: 8px;
+  padding: 0.55rem 0.6rem;
+  background: #fff;
+}
+
+.weekly-summary-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.weekly-summary-meta,
+.weekly-summary-text {
+  margin: 0.3rem 0 0;
+  font-size: 0.84rem;
+  color: var(--ui-text-secondary);
+}
+
 .dialog-fields {
   display: flex;
   flex-direction: column;
@@ -959,6 +1225,10 @@ function onPageChange(event: { first: number; rows: number }): void {
 
   .table-footer {
     justify-content: center;
+  }
+
+  .weekly-review-form {
+    grid-template-columns: 1fr;
   }
 }
 </style>

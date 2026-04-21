@@ -7,8 +7,11 @@ import type {
   CurriculumResponse,
   LearningMaterialResponse,
   PagedResponse,
+  ReviewWeeklySummaryRequest,
   TaskTemplateResponse,
   TraineeResponse,
+  WeeklySummaryGenerationPlaceholderResponse,
+  WeeklySummaryResponse,
 } from '../types'
 
 type SortDirection = 'asc' | 'desc'
@@ -252,4 +255,38 @@ export async function createCurriculumVersion(
     method: 'POST',
     body: JSON.stringify(body),
   })
+}
+
+export async function listWeeklySummariesForTrainee(
+  traineeId: number,
+  assignmentId: number,
+): Promise<WeeklySummaryResponse[]> {
+  return requestJson<WeeklySummaryResponse[]>(
+    `/api/mentor/trainees/${traineeId}/assignments/${assignmentId}/weekly-summaries`,
+  )
+}
+
+export async function reviewWeeklySummary(
+  traineeId: number,
+  assignmentId: number,
+  weekStart: string,
+  body: ReviewWeeklySummaryRequest,
+): Promise<WeeklySummaryResponse> {
+  return requestJson<WeeklySummaryResponse>(
+    `/api/mentor/trainees/${traineeId}/assignments/${assignmentId}/weekly-summaries/${encodeURIComponent(weekStart)}/review`,
+    {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    },
+  )
+}
+
+export async function generateWeeklySummaryPlaceholder(
+  traineeId: number,
+  assignmentId: number,
+): Promise<WeeklySummaryGenerationPlaceholderResponse> {
+  return requestJson<WeeklySummaryGenerationPlaceholderResponse>(
+    `/api/mentor/trainees/${traineeId}/assignments/${assignmentId}/weekly-summaries/generate`,
+    { method: 'POST' },
+  )
 }

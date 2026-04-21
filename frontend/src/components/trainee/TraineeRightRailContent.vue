@@ -5,7 +5,7 @@ import Button from 'primevue/button'
 import Message from 'primevue/message'
 import ProgressBar from 'primevue/progressbar'
 import ProgressSpinner from 'primevue/progressspinner'
-import { useRouter } from 'vue-router'
+import { useRouter, type RouteLocationRaw } from 'vue-router'
 import { injectTraineeAssignment } from '../../composables/useTraineeAssignment'
 import { useAuthStore } from '../../stores/auth'
 
@@ -60,8 +60,8 @@ const greeting = computed(() => {
 
 const currentFocusTask = computed(() => tasks.value.find((task) => task.status !== 'DONE') ?? null)
 
-function go(path: string): void {
-  void router.push(path)
+function go(to: RouteLocationRaw): void {
+  void router.push(to)
   if (props.variant === 'drawer') {
     emit('dismiss')
   }
@@ -137,7 +137,15 @@ function onLogout(): void {
           class="w-full primary-link-btn"
           outlined
           severity="secondary"
-          @click="go('/trainee/assignment')"
+          @click="go({ name: 'trainee-assignment' })"
+        />
+        <Button
+          label="Daily report"
+          icon="pi pi-calendar"
+          class="w-full primary-link-btn"
+          outlined
+          severity="secondary"
+          @click="go({ name: 'trainee-daily-report' })"
         />
         <Button
           label="Account security"

@@ -4,6 +4,7 @@ select
   a.curriculum_id,
   c.name as curriculum_name,
   c.description as curriculum_description,
+  c.version_label as curriculum_version_label,
   m.full_name as mentor_name,
   m.email as mentor_email,
   a.status,

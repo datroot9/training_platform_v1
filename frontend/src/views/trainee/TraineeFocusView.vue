@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import Avatar from 'primevue/avatar'
 import Button from 'primevue/button'
 import Card from 'primevue/card'
 import Message from 'primevue/message'
@@ -47,6 +48,35 @@ const selectedTask = computed<AssignmentTaskResponse | null>(() => {
 const mentorNameDisplay = computed(() => assignment.value?.mentorName?.trim() || '-')
 const mentorEmailDisplay = computed(() => assignment.value?.mentorEmail?.trim() || '-')
 const estimatedDaysDisplay = computed(() => assignment.value?.totalEstimatedDays)
+const curriculumVersionDisplay = computed(() => assignment.value?.curriculumVersionLabel?.trim() || null)
+
+const mentorAvatarLabel = computed(() =>
+  initialsFromMentor(assignment.value?.mentorName, assignment.value?.mentorEmail),
+)
+
+function initialsFromMentor(name?: string | null, email?: string | null): string {
+  const n = name?.trim()
+  if (n) {
+    const parts = n.split(/\s+/).filter(Boolean)
+    if (parts.length >= 2) {
+      const a = parts[0][0]
+      const b = parts[parts.length - 1][0]
+      if (a && b) return (a + b).toUpperCase()
+    }
+    if (parts.length === 1) {
+      const w = parts[0]
+      if (w.length >= 2) return w.slice(0, 2).toUpperCase()
+      if (w.length === 1) return w.toUpperCase()
+    }
+  }
+  const e = email?.trim()
+  if (e?.includes('@')) {
+    const local = e.split('@')[0] ?? ''
+    if (local.length >= 2) return local.slice(0, 2).toUpperCase()
+    if (local.length === 1) return local.toUpperCase()
+  }
+  return '?'
+}
 const allDone = computed(() => hasAssignment.value && tasks.value.length > 0 && completedTaskCount.value === totalTaskCount.value)
 
 const selectedPrimaryAction = computed(() => {
@@ -163,19 +193,48 @@ onBeforeUnmount(() => {
 
     <div v-else class="focus-grid">
       <section class="task-pane">
-        <section class="meta-card">
-          <h2 class="meta-title">{{ assignment!.curriculumName }}</h2>
-          <p class="meta-desc">
+        <section class="meta-card" aria-label="Curriculum overview">
+          <div class="meta-card__top">
+            <div class="meta-card__headline">
+              <p class="meta-card__eyebrow">Your curriculum</p>
+              <h2 class="meta-card__title">{{ assignment!.curriculumName }}</h2>
+            </div>
+            <div class="meta-card__chips">
+              <Tag
+                v-if="curriculumVersionDisplay"
+                :value="`Version ${curriculumVersionDisplay}`"
+                severity="secondary"
+                rounded
+              />
+              <Tag
+                v-if="estimatedDaysDisplay != null"
+                :value="`${estimatedDaysDisplay} day timeline`"
+                severity="info"
+                rounded
+              />
+              <Tag v-else value="Timeline not set" severity="contrast" rounded />
+            </div>
+          </div>
+          <p class="meta-card__desc">
             {{ assignment!.curriculumDescription?.trim() || 'No curriculum description provided by your mentor yet.' }}
           </p>
-          <div class="meta-grid">
-            <p><strong>Mentor:</strong> {{ mentorNameDisplay }}</p>
-            <p><strong>Mentor email:</strong> {{ mentorEmailDisplay }}</p>
-            <p>
-              <strong>Estimated completion:</strong>
-              <span v-if="estimatedDaysDisplay != null">{{ estimatedDaysDisplay }} days</span>
-              <span v-else>Not set</span>
-            </p>
+          <div class="meta-card__mentor-row">
+            <Avatar class="meta-card__avatar" :label="mentorAvatarLabel" size="large" shape="circle" />
+            <div class="meta-card__mentor-body">
+              <span class="meta-card__mentor-badge">Mentor</span>
+              <p class="meta-card__mentor-name">{{ mentorNameDisplay }}</p>
+              <p class="meta-card__mentor-email">{{ mentorEmailDisplay }}</p>
+            </div>
+          </div>
+          <div class="meta-card__links">
+            <Button
+              label="Open daily report page"
+              icon="pi pi-calendar"
+              text
+              size="small"
+              as="router-link"
+              :to="{ name: 'trainee-daily-report' }"
+            />
           </div>
         </section>
 
@@ -309,32 +368,122 @@ onBeforeUnmount(() => {
 }
 
 .meta-card {
-  border: 1px solid #ddd6fe;
-  background: #faf5ff;
-  border-radius: 12px;
-  padding: 0.9rem 1rem;
+  border: 1px solid #e9d5ff;
+  background: linear-gradient(135deg, #faf5ff 0%, #f5f3ff 55%, #eef2ff 100%);
+  border-radius: 14px;
+  padding: 1rem 1.1rem 1.05rem;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.8) inset, 0 8px 24px rgba(109, 40, 217, 0.06);
 }
 
-.meta-title {
+.meta-card__top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.65rem 1rem;
+}
+
+.meta-card__headline {
+  min-width: 0;
+  flex: 1 1 200px;
+}
+
+.meta-card__eyebrow {
+  margin: 0 0 0.2rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #7c3aed;
+}
+
+.meta-card__title {
   margin: 0;
-  font-size: 1.1rem;
+  font-size: 1.2rem;
+  font-weight: 700;
+  line-height: 1.25;
+  color: #1e1b4b;
 }
 
-.meta-desc {
-  margin: 0.35rem 0 0.65rem;
+.meta-card__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  justify-content: flex-end;
+  flex: 0 1 auto;
+}
+
+.meta-card__desc {
+  margin: 0.65rem 0 0.85rem;
   color: #475569;
-  line-height: 1.45;
+  line-height: 1.5;
+  font-size: 0.94rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
-.meta-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 0.35rem 0.9rem;
+.meta-card__mentor-row {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding-top: 0.65rem;
+  margin-top: 0.1rem;
+  border-top: 1px solid rgba(196, 181, 253, 0.45);
 }
 
-.meta-grid p {
+.meta-card__avatar {
+  flex-shrink: 0;
+  background: linear-gradient(145deg, #8b5cf6, #6366f1);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.meta-card__mentor-body {
+  min-width: 0;
+}
+
+.meta-card__mentor-badge {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #64748b;
+  margin-bottom: 0.15rem;
+}
+
+.meta-card__mentor-name {
   margin: 0;
-  font-size: 0.92rem;
+  font-weight: 600;
+  font-size: 1rem;
+  color: #0f172a;
+}
+
+.meta-card__mentor-email {
+  margin: 0.15rem 0 0;
+  font-size: 0.86rem;
+  color: #64748b;
+  word-break: break-word;
+}
+
+.meta-card__links {
+  margin-top: 0.45rem;
+  display: flex;
+  justify-content: flex-end;
+}
+
+@media (max-width: 640px) {
+  .meta-card__chips {
+    justify-content: flex-start;
+  }
+
+  .meta-card__links {
+    justify-content: flex-start;
+  }
 }
 
 .summary {

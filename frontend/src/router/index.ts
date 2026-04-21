@@ -42,12 +42,17 @@ const router = createRouter({
       component: () => import('../views/trainee/TraineeLayout.vue'),
       meta: { requiresAuth: true, role: 'TRAINEE' },
       children: [
-        { path: '', name: 'trainee-home', component: () => import('../views/trainee/TraineeDashboardView.vue') },
         {
-          path: 'assignment',
+          path: '',
           name: 'trainee-assignment',
           component: () => import('../views/trainee/TraineeFocusView.vue'),
         },
+        {
+          path: 'daily-report',
+          name: 'trainee-daily-report',
+          component: () => import('../views/trainee/TraineeDailyReportView.vue'),
+        },
+        { path: 'assignment', redirect: { name: 'trainee-assignment' } },
       ],
     },
     {

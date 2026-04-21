@@ -16,6 +16,7 @@ public class AssignmentProjection {
     private Long curriculumId;
     private String curriculumName;
     private String curriculumDescription;
+    private String curriculumVersionLabel;
     private String mentorName;
     private String mentorEmail;
     private String status;

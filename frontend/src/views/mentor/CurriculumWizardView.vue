@@ -51,9 +51,6 @@ const basicsSubmitting = ref(false)
 
 const pendingFiles = ref<PendingFile[]>([])
 const uploading = ref(false)
-const quickFile = ref<File | null>(null)
-const quickSortOrder = ref<number | null>(null)
-const quickUploading = ref(false)
 
 const materialDeleteVisible = ref(false)
 const materialToDelete = ref<LearningMaterialResponse | null>(null)
@@ -120,11 +117,6 @@ function onAddPendingFiles(event: Event): void {
   input.value = ''
 }
 
-function onQuickFileChange(event: Event): void {
-  const input = event.target as HTMLInputElement
-  quickFile.value = input.files?.[0] ?? null
-}
-
 function nextSortOrderBase(): number {
   const mats = detail.value?.materials ?? []
   if (mats.length === 0) return 0
@@ -153,24 +145,6 @@ async function uploadPendingQueue(): Promise<void> {
     error.value = e instanceof ApiError ? e.message : 'Upload failed'
   } finally {
     uploading.value = false
-  }
-}
-
-async function uploadQuickSingle(): Promise<void> {
-  const id = curriculumId.value
-  if (id == null || !quickFile.value) return
-  quickUploading.value = true
-  error.value = ''
-  try {
-    await mentorApi.uploadMaterial(id, quickFile.value, quickSortOrder.value ?? undefined)
-    quickFile.value = null
-    quickSortOrder.value = null
-    toast.add({ severity: 'success', summary: 'Material uploaded', life: 2200 })
-    await loadDetail(id)
-  } catch (e) {
-    error.value = e instanceof ApiError ? e.message : 'Upload failed'
-  } finally {
-    quickUploading.value = false
   }
 }
 
@@ -470,8 +444,7 @@ onMounted(async () => {
       <section v-show="activeStep === 1" class="card">
         <h2 class="step-title">Learning materials (PDF)</h2>
         <p class="hint">
-          Reorder files in the queue with the arrow buttons (top = first). Upload applies sort order 1, 2, 3… You can
-          also upload one file with an explicit sort order below.
+          Reorder files in the queue with the arrow buttons (top = first). Upload applies sort order 1, 2, 3…
         </p>
 
         <div class="queue-block">
@@ -732,7 +705,6 @@ onMounted(async () => {
 
 .form-grid label,
 .file-label,
-.quick-row label,
 .dialog-form label {
   display: flex;
   flex-direction: column;
@@ -762,18 +734,6 @@ onMounted(async () => {
 
 .pending-name {
   word-break: break-all;
-}
-
-.quick-upload {
-  border-top: 1px solid var(--brand-border-soft);
-  padding-top: 0.75rem;
-}
-
-.quick-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  align-items: flex-end;
 }
 
 .step-actions {

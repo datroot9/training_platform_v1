@@ -8,6 +8,7 @@ public record AssignmentResponse(
         Long curriculumId,
         String curriculumName,
         String curriculumDescription,
+        String curriculumVersionLabel,
         String mentorName,
         String mentorEmail,
         Integer totalEstimatedDays,
