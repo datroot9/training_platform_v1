@@ -577,11 +577,11 @@ watch([reportMode, dailyRangePreset, () => activeAssignment.value?.id, selectedT
 }
 
 .card-shell {
-  background: #fff;
-  border: 1px solid var(--ui-border-soft);
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
   border-radius: var(--ui-radius-lg);
-  box-shadow: var(--ui-shadow-sm);
-  padding: 0.9rem;
+  box-shadow: var(--ui-shadow-md);
+  padding: 1rem;
 }
 
 .panel-head {
@@ -617,17 +617,26 @@ watch([reportMode, dailyRangePreset, () => activeAssignment.value?.id, selectedT
 }
 
 .trainee-item {
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--ui-border-soft);
   border-radius: 10px;
-  background: #fff;
+  background: var(--ui-surface);
   text-align: left;
   padding: 0.55rem 0.6rem;
   cursor: pointer;
+  box-shadow: var(--ui-shadow-xs);
+  transition: border-color var(--ui-transition-fast), box-shadow var(--ui-transition-fast),
+    transform var(--ui-transition-fast);
+}
+
+.trainee-item:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--ui-accent-2) 30%, var(--ui-border));
+  box-shadow: var(--ui-shadow-sm);
 }
 
 .trainee-item.active {
-  border-color: #8b5cf6;
-  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.12);
+  border-color: var(--ui-accent-2);
+  box-shadow: 0 0 0 2px var(--ui-focus-ring), var(--ui-shadow-sm);
 }
 
 .trainee-item-top {
@@ -703,21 +712,26 @@ watch([reportMode, dailyRangePreset, () => activeAssignment.value?.id, selectedT
 .report-email {
   margin: 0.15rem 0 0;
   font-size: 0.92rem;
-  color: #475569;
+  color: var(--ui-text-secondary);
   font-weight: 500;
 }
 
 .active-only-note {
   margin: 0;
   font-size: 0.78rem;
-  color: #64748b;
+  color: var(--ui-warn);
+  padding: 0.25rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--ui-highlight) 45%, transparent);
+  background: var(--ui-highlight-soft);
 }
 
 .assignment-section {
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--ui-border);
   border-radius: 12px;
-  padding: 0.75rem;
-  background: #fdfdff;
+  padding: 0.85rem;
+  background: var(--ui-surface-soft);
+  box-shadow: var(--ui-shadow-xs);
 }
 
 .assignment-head {
@@ -752,10 +766,11 @@ watch([reportMode, dailyRangePreset, () => activeAssignment.value?.id, selectedT
 }
 
 .surface-card {
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--ui-border);
   border-radius: 10px;
-  background: #fff;
-  padding: 0.65rem;
+  background: var(--ui-surface);
+  padding: 0.75rem;
+  box-shadow: var(--ui-shadow-xs);
 }
 
 .surface-card h4 {
@@ -772,18 +787,21 @@ watch([reportMode, dailyRangePreset, () => activeAssignment.value?.id, selectedT
 }
 
 .week-select {
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--ui-border);
   border-radius: 8px;
   padding: 0.35rem 0.45rem;
   font-size: 0.82rem;
   min-width: 15rem;
+  background: #ffffff;
+  color: var(--ui-text-primary);
 }
 
 .daily-presets {
   display: inline-flex;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--ui-border);
   border-radius: 8px;
   overflow: hidden;
+  background: #ffffff;
 }
 
 .daily-presets :deep(.p-button) {
@@ -791,8 +809,8 @@ watch([reportMode, dailyRangePreset, () => activeAssignment.value?.id, selectedT
 }
 
 .daily-presets :deep(.p-button.is-active) {
-  background: #ede9fe;
-  color: #5b21b6;
+  background: var(--ui-accent-2-soft);
+  color: var(--ui-accent-2);
 }
 
 .daily-list,
@@ -807,10 +825,20 @@ watch([reportMode, dailyRangePreset, () => activeAssignment.value?.id, selectedT
 
 .weekly-row,
 .daily-row {
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--ui-border-soft);
   border-radius: 8px;
   padding: 0.5rem 0.55rem;
-  background: #fff;
+  background: var(--ui-surface);
+  box-shadow: var(--ui-shadow-xs);
+  transition: border-color var(--ui-transition-fast), box-shadow var(--ui-transition-fast),
+    transform var(--ui-transition-fast);
+}
+
+.daily-row:hover,
+.weekly-row:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--ui-accent-2) 26%, var(--ui-border));
+  box-shadow: var(--ui-shadow-sm);
 }
 
 .daily-row-head {
@@ -836,13 +864,13 @@ watch([reportMode, dailyRangePreset, () => activeAssignment.value?.id, selectedT
 .weekly-meta,
 .weekly-feedback {
   margin: 0.25rem 0 0;
-  color: #475569;
+  color: var(--ui-text-secondary);
   font-size: 0.82rem;
 }
 
 .daily-text {
   margin: 0.3rem 0 0;
-  color: #334155;
+  color: var(--ui-text-primary);
   font-size: 0.86rem;
   line-height: 1.4;
 }
@@ -859,9 +887,10 @@ watch([reportMode, dailyRangePreset, () => activeAssignment.value?.id, selectedT
   align-items: center;
   gap: 0.75rem;
   padding: 0.72rem 0.78rem;
-  border: 1px solid #ddd6fe;
+  border: 1px solid var(--ui-border);
   border-radius: 12px;
-  background: linear-gradient(135deg, #faf5ff 0%, #f5f3ff 100%);
+  background: linear-gradient(135deg, #ffffff 0%, var(--ui-surface-tint) 58%, var(--ui-coral-soft) 100%);
+  box-shadow: var(--ui-shadow-xs);
 }
 
 .daily-detail-identity {
@@ -872,7 +901,7 @@ watch([reportMode, dailyRangePreset, () => activeAssignment.value?.id, selectedT
   margin: 0;
   font-size: 1.02rem;
   font-weight: 700;
-  color: #312e81;
+  color: var(--ui-accent-deep);
   display: inline-flex;
   align-items: center;
   gap: 0.42rem;
@@ -888,7 +917,7 @@ watch([reportMode, dailyRangePreset, () => activeAssignment.value?.id, selectedT
 .daily-detail-meta {
   margin: 0.15rem 0 0;
   font-size: 0.86rem;
-  color: #5b6280;
+  color: var(--ui-text-secondary);
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
@@ -897,7 +926,7 @@ watch([reportMode, dailyRangePreset, () => activeAssignment.value?.id, selectedT
 .daily-detail-date {
   margin: 0;
   font-size: 0.8rem;
-  color: #64748b;
+  color: var(--ui-text-secondary);
 }
 
 .detail-grid {
@@ -907,17 +936,17 @@ watch([reportMode, dailyRangePreset, () => activeAssignment.value?.id, selectedT
 }
 
 .detail-block {
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--ui-border);
   border-radius: 10px;
   padding: 0.7rem 0.72rem;
-  background: #fff;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+  background: #ffffff;
+  box-shadow: var(--ui-shadow-xs);
 }
 
 .detail-block h4 {
   margin: 0;
   font-size: 0.84rem;
-  color: #1e293b;
+  color: var(--ui-text-primary);
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
@@ -925,50 +954,50 @@ watch([reportMode, dailyRangePreset, () => activeAssignment.value?.id, selectedT
 
 .detail-block p {
   margin: 0.35rem 0 0;
-  color: #1e293b;
+  color: var(--ui-text-primary);
   line-height: 1.45;
   white-space: pre-wrap;
 }
 
 .detail-block--done {
-  background: #f0fdf4;
-  border-color: #bbf7d0;
+  background: var(--ui-success-soft);
+  border-color: color-mix(in srgb, var(--ui-success) 36%, var(--ui-border));
 }
 
 .detail-block--done h4 {
-  color: #166534;
+  color: var(--ui-success);
 }
 
 .detail-block--plan {
-  background: #eff6ff;
-  border-color: #bfdbfe;
+  background: var(--ui-accent-2-soft);
+  border-color: color-mix(in srgb, var(--ui-accent-2) 35%, var(--ui-border));
 }
 
 .detail-block--plan h4 {
-  color: #1d4ed8;
+  color: var(--ui-accent-2);
 }
 
 .detail-block--blockers {
-  background: #fff7ed;
-  border-color: #fed7aa;
+  background: var(--ui-highlight-soft);
+  border-color: color-mix(in srgb, var(--ui-highlight) 38%, var(--ui-border));
 }
 
 .detail-block--blockers h4 {
-  color: #c2410c;
+  color: var(--ui-warn);
 }
 
 .detail-block--resources {
-  background: #f5f3ff;
-  border-color: #ddd6fe;
+  background: var(--ui-coral-soft);
+  border-color: color-mix(in srgb, var(--ui-coral) 34%, var(--ui-border));
 }
 
 .detail-block--resources h4 {
-  color: #6d28d9;
+  color: var(--ui-coral);
 }
 
 .detail-block--meta {
-  background: #f8fafc;
-  border-color: #dbeafe;
+  background: var(--ui-surface-soft);
+  border-color: var(--ui-border-soft);
 }
 
 .resource-list {
@@ -981,12 +1010,13 @@ watch([reportMode, dailyRangePreset, () => activeAssignment.value?.id, selectedT
 }
 
 .resource-row {
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--ui-border-soft);
   border-radius: 8px;
   padding: 0.45rem 0.5rem;
   display: flex;
   justify-content: space-between;
   gap: 0.5rem;
+  background: #ffffff;
 }
 
 .resource-main {
@@ -997,7 +1027,7 @@ watch([reportMode, dailyRangePreset, () => activeAssignment.value?.id, selectedT
 }
 
 .resource-row a {
-  color: #2563eb;
+  color: var(--ui-accent-strong);
   text-decoration: none;
   font-size: 0.82rem;
   max-width: 55%;
@@ -1017,12 +1047,12 @@ watch([reportMode, dailyRangePreset, () => activeAssignment.value?.id, selectedT
 }
 
 :deep(.daily-detail-dialog .p-dialog-header) {
-  background: #f8f7ff;
-  border-bottom: 1px solid #e9e5ff;
+  background: #ffffff;
+  border-bottom: 1px solid var(--ui-border);
 }
 
 :deep(.daily-detail-dialog .p-dialog-content) {
-  background: #fcfcff;
+  background: var(--ui-surface-soft);
   padding-top: 0.9rem;
 }
 

@@ -1,75 +1,214 @@
 @import 'primeicons/primeicons.css';
 
 :root {
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  color: #0f172a;
-  background: #f8fafc;
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  line-height: 1.55;
+  color: #1c1d1f;
+  background: #fbfaff;
   color-scheme: light;
-  --brand-50: #e0f2fe;
-  --brand-100: #bae6fd;
-  --brand-500: #0ea5e9;
-  --brand-600: #0284c7;
-  --brand-700: #0369a1;
-  --brand-border-soft: #dbeafe;
-  --text-muted: #64748b;
-  --auth-primary-500: #5624d0;
-  --auth-primary-600: #4b1fb8;
-  --auth-primary-700: #3f1aa0;
-  --auth-accent-500: #7a5af8;
+
+  /* Udemy-inspired primary scale (deep purple) */
+  --tp-purple-50: #faf4ff;
+  --tp-purple-100: #f1e4ff;
+  --tp-purple-200: #e3c7fd;
+  --tp-purple-300: #cd9efb;
+  --tp-purple-400: #b770f5;
+  --tp-purple-500: #a435f0;
+  --tp-purple-600: #8711d8;
+  --tp-purple-700: #6a0db0;
+  --tp-purple-800: #4c0a80;
+  --tp-purple-900: #2b054b;
+
+  /* Pink accent (Udemy uses magenta/pink pops) */
+  --tp-pink-50: #fff1f9;
+  --tp-pink-100: #ffd6eb;
+  --tp-pink-300: #ff85c1;
+  --tp-pink-500: #ec4899;
+  --tp-pink-600: #d4368a;
+
+  /* Creative learning support accents */
+  --tp-indigo-50: #eef2ff;
+  --tp-indigo-100: #e0e7ff;
+  --tp-indigo-400: #818cf8;
+  --tp-indigo-500: #6366f1;
+  --tp-indigo-600: #4f46e5;
+  --tp-indigo-700: #4338ca;
+
+  --tp-coral-50: #fff4f2;
+  --tp-coral-100: #ffe4df;
+  --tp-coral-300: #fca08f;
+  --tp-coral-500: #f97360;
+  --tp-coral-600: #ea5a43;
+
+  --tp-amber-50: #fff9eb;
+  --tp-amber-100: #ffefc7;
+  --tp-amber-300: #fbbf24;
+  --tp-amber-500: #f59e0b;
+  --tp-amber-600: #d97706;
+
+  /* Neutral surface/text */
+  --tp-ink-900: #1c1d1f;
+  --tp-ink-700: #2d2f31;
+  --tp-ink-500: #6a6f73;
+  --tp-ink-400: #8b8f95;
+  --tp-ink-300: #b8bdc3;
+  --tp-ink-200: #e2e4ea;
+  --tp-ink-100: #eef0f4;
+  --tp-ink-50: #f7f8fb;
+
+  /* Auth page (login) tokens */
+  --auth-primary-500: var(--tp-purple-500);
+  --auth-primary-600: var(--tp-purple-600);
+  --auth-primary-700: var(--tp-purple-700);
+  --auth-accent-500: var(--tp-pink-500);
   --auth-surface: #ffffff;
-  --auth-surface-muted: #f7f4ff;
-  --auth-border: #e4e4e7;
-  --auth-border-strong: #c5c7d0;
-  --auth-text-primary: #1f2937;
-  --auth-text-secondary: #6b7280;
+  --auth-surface-muted: var(--tp-purple-50);
+  --auth-border: var(--tp-ink-200);
+  --auth-border-strong: var(--tp-ink-300);
+  --auth-text-primary: var(--tp-ink-900);
+  --auth-text-secondary: var(--tp-ink-500);
   --auth-danger: #dc2626;
-  --auth-focus-ring: rgba(86, 36, 208, 0.28);
-  --auth-card-shadow: 0 20px 45px rgba(32, 23, 63, 0.16);
-  --auth-card-shadow-hover: 0 24px 55px rgba(32, 23, 63, 0.2);
-  --auth-radius-lg: 18px;
-  --auth-radius-md: 10px;
+  --auth-focus-ring: rgba(164, 53, 240, 0.25);
+  --auth-card-shadow: 0 28px 60px -30px rgba(76, 10, 128, 0.28);
+  --auth-card-shadow-hover: 0 34px 70px -32px rgba(76, 10, 128, 0.32);
+  --auth-radius-lg: 22px;
+  --auth-radius-md: 12px;
   --auth-transition-fast: 140ms ease;
   --auth-transition-base: 200ms ease;
-  --ui-bg-page: #f5f7fb;
-  --ui-bg-gradient: linear-gradient(135deg, #f8f7ff 0%, #f5f7fb 36%, #eef2ff 100%);
+
+  /* App shell tokens (authenticated area) */
+  --ui-bg-page: #f5f6fb;
+  --ui-bg-gradient: radial-gradient(1100px 460px at 0% -15%, rgba(249, 115, 96, 0.22) 0%, transparent 58%),
+    radial-gradient(950px 420px at 100% -18%, rgba(216, 194, 255, 0.42) 0%, transparent 58%),
+    radial-gradient(900px 360px at 50% -28%, rgba(99, 102, 241, 0.14) 0%, transparent 64%),
+    linear-gradient(180deg, #f8f8fd 0%, #f1f3fa 100%);
+
   --ui-surface: #ffffff;
-  --ui-surface-soft: #faf8ff;
-  --ui-border: #e5e7eb;
-  --ui-border-soft: #eceff5;
-  --ui-text-primary: #111827;
-  --ui-text-secondary: #6b7280;
-  --ui-heading: #312e81;
-  --ui-accent: #5624d0;
-  --ui-accent-strong: #4b1fb8;
-  --ui-accent-soft: #f3edff;
-  --ui-success-soft: #ecfdf3;
+  --ui-surface-soft: #f7f8fc;
+  --ui-surface-tint: #f5f0ff;
+  --ui-surface-tint-pink: #fff3f9;
+
+  --ui-border: #cfd4df;
+  --ui-border-soft: #dde2eb;
+  --ui-border-strong: #b9c0ce;
+
+  --ui-text-primary: var(--tp-ink-900);
+  --ui-text-secondary: var(--tp-ink-500);
+  --ui-text-muted: var(--tp-ink-400);
+  --ui-heading: var(--tp-ink-900);
+
+  --ui-accent: var(--tp-purple-500);
+  --ui-accent-strong: var(--tp-purple-600);
+  --ui-accent-deep: var(--tp-purple-700);
+  --ui-accent-soft: var(--tp-purple-50);
+  --ui-accent-soft-2: var(--tp-purple-100);
+  --ui-accent-2: var(--tp-indigo-600);
+  --ui-accent-2-soft: var(--tp-indigo-50);
+  --ui-coral: var(--tp-coral-500);
+  --ui-coral-soft: var(--tp-coral-50);
+  --ui-highlight: var(--tp-amber-500);
+  --ui-highlight-soft: var(--tp-amber-50);
+  --ui-warm-soft: #fff7ef;
+
+  --ui-pink: var(--tp-pink-500);
+  --ui-pink-soft: var(--tp-pink-50);
+
+  --ui-success: #059669;
+  --ui-success-soft: #ecfdf5;
+  --ui-warn: var(--tp-amber-600);
   --ui-warn-soft: #fff7ed;
+  --ui-danger: #dc2626;
   --ui-danger-soft: #fef2f2;
-  --ui-focus-ring: rgba(86, 36, 208, 0.22);
-  --ui-shadow-sm: 0 4px 14px rgba(15, 23, 42, 0.06);
-  --ui-shadow-md: 0 14px 34px rgba(30, 41, 59, 0.1);
-  --ui-shadow-lg: 0 22px 54px rgba(30, 41, 59, 0.14);
-  --ui-radius-sm: 10px;
-  --ui-radius-md: 14px;
-  --ui-radius-lg: 18px;
+  --ui-info-soft: #eef2ff;
+
+  --ui-focus-ring: rgba(79, 70, 229, 0.24);
+
+  --ui-shadow-xs: 0 1px 2px rgba(20, 24, 33, 0.07);
+  --ui-shadow-sm: 0 10px 26px -16px rgba(47, 56, 80, 0.26), 0 2px 8px rgba(47, 56, 80, 0.08);
+  --ui-shadow-md: 0 20px 46px -22px rgba(36, 44, 70, 0.3), 0 8px 20px rgba(36, 44, 70, 0.08);
+  --ui-shadow-lg: 0 34px 70px -30px rgba(29, 37, 62, 0.34), 0 14px 32px rgba(29, 37, 62, 0.1);
+  --ui-shadow-pop: 0 0 0 3px var(--ui-focus-ring);
+
+  --ui-radius-xs: 8px;
+  --ui-radius-sm: 12px;
+  --ui-radius-md: 16px;
+  --ui-radius-lg: 20px;
+  --ui-radius-xl: 26px;
+
   --ui-transition-fast: 130ms ease;
-  --ui-transition-base: 190ms ease;
-  --ui-sidebar-width: 270px;
+  --ui-transition-base: 200ms ease;
+
+  --ui-sidebar-width: 268px;
+
+  /* Legacy brand palette kept for backwards-compat */
+  --brand-50: var(--tp-purple-50);
+  --brand-100: var(--tp-purple-100);
+  --brand-500: var(--tp-purple-500);
+  --brand-600: var(--tp-purple-600);
+  --brand-700: var(--tp-purple-700);
+  --brand-border-soft: var(--tp-ink-100);
+  --text-muted: var(--tp-ink-500);
 }
 
 * {
   box-sizing: border-box;
 }
 
+html,
 body {
   margin: 0;
+  padding: 0;
+}
+
+body {
   background: var(--ui-bg-page);
   color: var(--ui-text-primary);
+  font-feature-settings: 'cv11', 'ss01';
 }
 
 a {
   color: inherit;
+}
+
+a:focus-visible,
+button:focus-visible {
+  outline: none;
+}
+
+/* Utility classes shared across views */
+.tp-card {
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border-soft);
+  border-radius: var(--ui-radius-md);
+  box-shadow: var(--ui-shadow-sm);
+}
+
+.tp-card--flat {
+  box-shadow: none;
+}
+
+.tp-muted {
+  color: var(--ui-text-secondary);
+}
+
+.tp-heading {
+  color: var(--ui-heading);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.tp-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  background: var(--ui-accent-soft);
+  color: var(--ui-accent-deep);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 @media (prefers-reduced-motion: reduce) {

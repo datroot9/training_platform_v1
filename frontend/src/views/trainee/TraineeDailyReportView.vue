@@ -364,7 +364,7 @@ watch(
               <InputText v-model="fresherLabel" :disabled="!canEdit || submitting" />
             </label>
             <label>
-              Training day index
+              Training day
               <InputNumber
                 :model-value="trainingDayIndex"
                 :min="1"
@@ -373,15 +373,15 @@ watch(
               />
             </label>
             <label class="full">
-              Noi dung cong viec hom nay
+              Work completed today
               <Textarea v-model="whatDone" rows="3" auto-resize :disabled="!canEdit || submitting" />
             </label>
             <label class="full">
-              Noi dung cong viec ngay mai
+              Work planned for tomorrow
               <Textarea v-model="plannedTomorrow" rows="3" auto-resize :disabled="!canEdit || submitting" />
             </label>
             <label class="full">
-              Kho khan
+              Blockers
               <Textarea v-model="blockers" rows="2" auto-resize :disabled="!canEdit || submitting" />
             </label>
 
@@ -493,10 +493,11 @@ watch(
 }
 
 .card-shell {
-  border: 1px solid #ddd6fe;
+  border: 1px solid var(--ui-border);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.9);
-  padding: 0.9rem;
+  background: var(--ui-surface);
+  padding: 1rem;
+  box-shadow: var(--ui-shadow-md);
 }
 
 .daily-summary,
@@ -519,13 +520,14 @@ watch(
 }
 
 .focus-card {
-  border: 1px solid #ddd6fe;
+  border: 1px solid var(--ui-border);
   border-radius: 12px;
-  background: #faf8ff;
+  background: linear-gradient(165deg, var(--ui-accent-2-soft) 0%, var(--ui-surface-soft) 62%, #ffffff 100%);
   padding: 0.7rem 0.75rem;
   display: flex;
   flex-direction: column;
   gap: 0.55rem;
+  box-shadow: var(--ui-shadow-xs);
 }
 
 .focus-card-head {
@@ -543,7 +545,7 @@ watch(
 .focus-title {
   margin: 0;
   font-size: 0.9rem;
-  color: #1e293b;
+  color: var(--ui-text-primary);
   font-weight: 600;
 }
 
@@ -565,7 +567,7 @@ watch(
 }
 
 .field input[type='date'] {
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--ui-border);
   border-radius: 8px;
   padding: 0.35rem 0.45rem;
 }
@@ -578,17 +580,26 @@ watch(
 .report-item {
   width: 100%;
   text-align: left;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--ui-border-soft);
   border-radius: 10px;
-  background: #fff;
+  background: var(--ui-surface);
   padding: 0.5rem 0.55rem;
   margin-bottom: 0.45rem;
   cursor: pointer;
+  box-shadow: var(--ui-shadow-xs);
+  transition: border-color var(--ui-transition-fast), box-shadow var(--ui-transition-fast),
+    transform var(--ui-transition-fast);
+}
+
+.report-item:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--ui-accent-2) 26%, var(--ui-border));
+  box-shadow: var(--ui-shadow-sm);
 }
 
 .report-item.active {
-  border-color: #8b5cf6;
-  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.12);
+  border-color: var(--ui-accent-2);
+  box-shadow: 0 0 0 2px var(--ui-focus-ring), var(--ui-shadow-sm);
 }
 
 .report-item-top {
@@ -600,7 +611,7 @@ watch(
 
 .report-item p {
   margin: 0.35rem 0 0;
-  color: #64748b;
+  color: var(--ui-text-secondary);
   font-size: 0.82rem;
 }
 
@@ -626,9 +637,10 @@ watch(
 }
 
 .dialog-head {
-  border-bottom: 1px solid #ede9fe;
+  border-bottom: 1px solid var(--ui-border);
   padding: 1rem 1rem 0.85rem;
   flex-shrink: 0;
+  background: linear-gradient(180deg, #ffffff 0%, var(--ui-surface-tint) 62%, var(--ui-coral-soft) 100%);
 }
 
 .dialog-head-actions {
@@ -664,10 +676,11 @@ watch(
 }
 
 .report-resources {
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--ui-border);
   border-radius: 10px;
   padding: 0.55rem 0.6rem;
-  background: #f8fafc;
+  background: linear-gradient(180deg, var(--ui-warm-soft) 0%, #ffffff 100%);
+  box-shadow: var(--ui-shadow-xs);
 }
 
 .report-resources-head {
@@ -705,17 +718,17 @@ watch(
 }
 
 .daily-form-footer {
-  border-top: 1px solid #ede9fe;
+  border-top: 1px solid var(--ui-border);
   padding: 0.8rem 1rem 1rem;
   margin-top: auto;
-  background: #ffffff;
+  background: var(--ui-surface);
   flex-shrink: 0;
 }
 
 :deep(.daily-report-dialog.p-dialog) {
-  border: 1px solid #d4ccff;
+  border: 1px solid var(--ui-border);
   border-radius: 20px;
-  box-shadow: 0 24px 56px -26px rgba(15, 23, 42, 0.48);
+  box-shadow: var(--ui-shadow-lg);
   overflow: hidden;
 }
 
@@ -724,13 +737,17 @@ watch(
 }
 
 .weekly-feedback {
-  border-top: 1px solid #e2e8f0;
+  border-top: 1px solid var(--ui-border-soft);
   padding-top: 0.65rem;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, var(--ui-accent-2-soft) 100%);
+  border-radius: 10px;
+  padding: 0.65rem 0.7rem 0.5rem;
 }
 
 .weekly-feedback-title {
   margin: 0;
   font-weight: 600;
+  color: var(--ui-accent-2);
 }
 
 .weekly-feedback-meta,
@@ -738,16 +755,16 @@ watch(
 .weekly-feedback-text {
   margin: 0.25rem 0 0;
   font-size: 0.85rem;
-  color: #475569;
+  color: var(--ui-text-secondary);
 }
 
 .weekly-feedback-grade {
   font-weight: 600;
-  color: #1f2937;
+  color: var(--ui-text-primary);
 }
 
 .muted {
-  color: #64748b;
+  color: var(--ui-text-secondary);
 }
 
 .small {

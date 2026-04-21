@@ -14,6 +14,7 @@ const props = withDefaults(defineProps<{ variant?: 'dock' | 'drawer' }>(), { var
 const emit = defineEmits<{
   dismiss: []
   logout: []
+  openChangePassword: []
 }>()
 
 const auth = useAuthStore()
@@ -73,6 +74,13 @@ function onLogout(): void {
     emit('dismiss')
   }
 }
+
+function onOpenChangePassword(): void {
+  emit('openChangePassword')
+  if (props.variant === 'drawer') {
+    emit('dismiss')
+  }
+}
 </script>
 
 <template>
@@ -82,7 +90,7 @@ function onLogout(): void {
         <div
           class="donut"
           :style="{
-            background: `conic-gradient(var(--trainee-accent, #7c3aed) ${progressPercent}%, #e2e8f0 0)`,
+            background: `conic-gradient(var(--trainee-accent, var(--tp-purple-500)) ${progressPercent}%, var(--tp-ink-100) 0)`,
           }"
         >
           <div class="donut-hole">
@@ -148,11 +156,11 @@ function onLogout(): void {
           @click="go({ name: 'trainee-daily-report' })"
         />
         <Button
-          label="Account security"
+          label="Change password"
           icon="pi pi-shield"
           class="w-full secondary-link-btn"
           text
-          @click="go('/account/change-password')"
+          @click="onOpenChangePassword"
         />
       </section>
 
@@ -179,10 +187,10 @@ function onLogout(): void {
 }
 
 .card {
-  border: 1px solid #ddd6fe;
+  border: 1px solid var(--ui-border-soft);
   border-radius: var(--ui-radius-md);
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow: var(--ui-shadow-sm);
+  background: var(--ui-surface);
+  box-shadow: var(--ui-shadow-xs);
 }
 
 .profile-block {
@@ -208,15 +216,15 @@ function onLogout(): void {
   width: 100%;
   height: 100%;
   border-radius: 50%;
-  background: #fdfcff;
+  background: var(--ui-surface);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .avatar-in-donut {
-  background: linear-gradient(145deg, #ede9fe, #ddd6fe);
-  color: #5b21b6;
+  background: linear-gradient(145deg, var(--tp-purple-500), var(--tp-pink-500));
+  color: #ffffff;
   font-weight: 700;
 }
 
@@ -224,7 +232,7 @@ function onLogout(): void {
   margin: 0;
   font-size: 1.05rem;
   font-weight: 700;
-  color: #1e1b4b;
+  color: var(--ui-heading);
 }
 
 .sub {
@@ -246,7 +254,7 @@ function onLogout(): void {
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #64748b;
+  color: var(--ui-text-secondary);
 }
 
 .progress-block {
@@ -315,7 +323,7 @@ function onLogout(): void {
 }
 
 :deep(.bar .p-progressbar-value) {
-  background: linear-gradient(90deg, #7c3aed 0%, #4f46e5 100%);
+  background: linear-gradient(90deg, var(--tp-purple-500) 0%, var(--tp-pink-500) 100%);
 }
 
 :deep(.msg.p-message) {
@@ -323,21 +331,24 @@ function onLogout(): void {
 }
 
 :deep(.primary-link-btn.p-button) {
-  border-color: #c4b5fd;
-  color: #5b21b6;
+  border-color: var(--ui-border);
+  color: var(--ui-text-primary);
+  background: var(--ui-surface);
 }
 
 :deep(.primary-link-btn.p-button:hover) {
-  background: #f3e8ff;
-  border-color: #a78bfa;
+  background: var(--ui-accent-soft);
+  border-color: color-mix(in srgb, var(--ui-accent) 30%, var(--ui-border));
+  color: var(--ui-accent-deep);
 }
 
 :deep(.secondary-link-btn.p-button) {
-  color: #5b21b6;
+  color: var(--ui-text-secondary);
 }
 
 :deep(.secondary-link-btn.p-button:hover) {
-  background: #f3e8ff;
+  background: var(--ui-accent-soft);
+  color: var(--ui-accent-deep);
 }
 
 :deep(.logout-btn.p-button) {

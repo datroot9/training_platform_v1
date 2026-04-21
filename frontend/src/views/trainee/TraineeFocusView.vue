@@ -36,6 +36,9 @@ const {
 } = injectTraineeAssignment()
 
 const orderedTasks = computed(() => [...tasks.value].sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id))
+const lastCompletedIndex = computed(() =>
+  orderedTasks.value.reduce((last, task, index) => (task.status === 'DONE' ? index : last), -1),
+)
 const selectedTaskId = ref<number | null>(null)
 const pdfShellRef = ref<HTMLElement | null>(null)
 const isPdfFullscreen = ref(false)
@@ -152,6 +155,10 @@ function selectTask(taskId: number): void {
   selectedTaskId.value = taskId
 }
 
+function isTimelineLineActive(index: number): boolean {
+  return index <= lastCompletedIndex.value
+}
+
 async function runPrimaryAction(task: AssignmentTaskResponse): Promise<void> {
   const action = taskPrimaryAction(task.status)
   try {
@@ -226,16 +233,6 @@ onBeforeUnmount(() => {
               <p class="meta-card__mentor-email">{{ mentorEmailDisplay }}</p>
             </div>
           </div>
-          <div class="meta-card__links">
-            <Button
-              label="Open daily report page"
-              icon="pi pi-calendar"
-              text
-              size="small"
-              as="router-link"
-              :to="{ name: 'trainee-daily-report' }"
-            />
-          </div>
         </section>
 
         <p class="summary">{{ completedTaskCount }} of {{ totalTaskCount }} tasks done</p>
@@ -252,9 +249,6 @@ onBeforeUnmount(() => {
           </template>
           <template #content>
             <p v-if="selectedTask.description" class="desc">{{ selectedTask.description }}</p>
-            <p class="estimate">
-              Estimated: {{ selectedTask.estimatedDays != null ? `${selectedTask.estimatedDays} day(s)` : 'Not set' }}
-            </p>
             <div class="focus-actions">
               <Button
                 v-if="selectedPrimaryAction"
@@ -264,9 +258,6 @@ onBeforeUnmount(() => {
                 :disabled="updatingTaskIds.has(selectedTask.id)"
                 @click="runPrimaryAction(selectedTask)"
               />
-              <p v-if="selectedTask.learningMaterialId == null" class="muted small">
-                This step has no PDF attached.
-              </p>
             </div>
           </template>
         </Card>
@@ -275,19 +266,39 @@ onBeforeUnmount(() => {
           <h3 class="queue-title">Task queue</h3>
           <div class="queue-list">
             <button
-              v-for="task in orderedTasks"
+              v-for="(task, index) in orderedTasks"
               :key="task.id"
               class="queue-item"
-              :class="{ active: task.id === selectedTaskId }"
+              :class="{
+                active: task.id === selectedTaskId,
+                done: task.status === 'DONE',
+                current: task.status === 'IN_PROGRESS',
+                upcoming: task.status === 'NOT_STARTED',
+              }"
               type="button"
               @click="selectTask(task.id)"
             >
-              <div class="queue-item-top">
-                <span class="queue-label">Step {{ task.sortOrder }}</span>
-                <Tag :value="taskStatusLabel(task.status)" :severity="taskStatusTagSeverity(task.status)" />
+              <div class="queue-rail" aria-hidden="true">
+                <span class="queue-line queue-line-top" :class="{ active: isTimelineLineActive(index - 1) }" />
+                <span class="queue-node" />
+                <span class="queue-line queue-line-bottom" :class="{ active: isTimelineLineActive(index) }" />
               </div>
-              <p class="queue-name">{{ task.title }}</p>
-              <p class="queue-meta">{{ task.learningMaterialId != null ? 'PDF available' : 'No PDF' }}</p>
+              <div class="queue-item-body">
+                <div class="queue-item-top">
+                  <span class="queue-label">Step {{ task.sortOrder }}</span>
+                  <Tag :value="taskStatusLabel(task.status)" :severity="taskStatusTagSeverity(task.status)" />
+                </div>
+                <p class="queue-name">{{ task.title }}</p>
+                <p class="queue-meta">
+                  {{
+                    task.estimatedDays != null
+                      ? `${task.estimatedDays} day(s) estimate`
+                      : task.learningMaterialId != null
+                        ? 'PDF available'
+                        : 'No estimate'
+                  }}
+                </p>
+              </div>
             </button>
           </div>
         </section>
@@ -361,18 +372,19 @@ onBeforeUnmount(() => {
 
 .task-pane,
 .material-pane {
-  background: rgba(255, 255, 255, 0.85);
-  border: 1px solid #ddd6fe;
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
   border-radius: 12px;
-  padding: 1rem;
+  padding: 1.05rem;
+  box-shadow: var(--ui-shadow-md);
 }
 
 .meta-card {
-  border: 1px solid #e9d5ff;
-  background: linear-gradient(135deg, #faf5ff 0%, #f5f3ff 55%, #eef2ff 100%);
-  border-radius: 14px;
-  padding: 1rem 1.1rem 1.05rem;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.8) inset, 0 8px 24px rgba(109, 40, 217, 0.06);
+  border: 1px solid var(--ui-border);
+  background: linear-gradient(135deg, #ffffff 0%, var(--ui-surface-tint) 54%, var(--ui-coral-soft) 100%);
+  border-radius: var(--ui-radius-md);
+  padding: 1.1rem 1.2rem 1.1rem;
+  box-shadow: var(--ui-shadow-md);
 }
 
 .meta-card__top {
@@ -391,10 +403,10 @@ onBeforeUnmount(() => {
 .meta-card__eyebrow {
   margin: 0 0 0.2rem;
   font-size: 0.72rem;
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #7c3aed;
+  color: var(--ui-accent-2);
 }
 
 .meta-card__title {
@@ -402,7 +414,8 @@ onBeforeUnmount(() => {
   font-size: 1.2rem;
   font-weight: 700;
   line-height: 1.25;
-  color: #1e1b4b;
+  color: var(--ui-heading);
+  letter-spacing: -0.01em;
 }
 
 .meta-card__chips {
@@ -415,7 +428,7 @@ onBeforeUnmount(() => {
 
 .meta-card__desc {
   margin: 0.65rem 0 0.85rem;
-  color: #475569;
+  color: var(--ui-text-secondary);
   line-height: 1.5;
   font-size: 0.94rem;
   display: -webkit-box;
@@ -431,13 +444,13 @@ onBeforeUnmount(() => {
   gap: 0.85rem;
   padding-top: 0.65rem;
   margin-top: 0.1rem;
-  border-top: 1px solid rgba(196, 181, 253, 0.45);
+  border-top: 1px solid var(--ui-border-soft);
 }
 
 .meta-card__avatar {
   flex-shrink: 0;
-  background: linear-gradient(145deg, #8b5cf6, #6366f1);
-  color: #fff;
+  background: linear-gradient(145deg, var(--tp-purple-500), var(--ui-coral));
+  color: #ffffff;
   font-weight: 700;
   font-size: 0.95rem;
 }
@@ -452,7 +465,7 @@ onBeforeUnmount(() => {
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #64748b;
+  color: var(--ui-text-secondary);
   margin-bottom: 0.15rem;
 }
 
@@ -460,28 +473,18 @@ onBeforeUnmount(() => {
   margin: 0;
   font-weight: 600;
   font-size: 1rem;
-  color: #0f172a;
+  color: var(--ui-heading);
 }
 
 .meta-card__mentor-email {
   margin: 0.15rem 0 0;
   font-size: 0.86rem;
-  color: #64748b;
+  color: var(--ui-text-secondary);
   word-break: break-word;
-}
-
-.meta-card__links {
-  margin-top: 0.45rem;
-  display: flex;
-  justify-content: flex-end;
 }
 
 @media (max-width: 640px) {
   .meta-card__chips {
-    justify-content: flex-start;
-  }
-
-  .meta-card__links {
     justify-content: flex-start;
   }
 }
@@ -489,12 +492,13 @@ onBeforeUnmount(() => {
 .summary {
   margin: 0.7rem 0;
   font-weight: 600;
-  color: #334155;
+  color: var(--ui-text-primary);
 }
 
 .focus-card {
   margin-bottom: 0.85rem;
-  border: 1px solid #ddd6fe;
+  border: 1px solid var(--ui-border);
+  box-shadow: var(--ui-shadow-xs);
 }
 
 .focus-title-row {
@@ -507,13 +511,13 @@ onBeforeUnmount(() => {
 
 .desc {
   margin: 0 0 0.8rem;
-  color: #475569;
+  color: var(--ui-text-secondary);
   line-height: 1.5;
 }
 
 .estimate {
   margin: 0 0 0.8rem;
-  color: #475569;
+  color: var(--ui-text-secondary);
   font-size: 0.92rem;
 }
 
@@ -532,27 +536,25 @@ onBeforeUnmount(() => {
 .queue-list {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.35rem;
 }
 
 .queue-item {
-  border: 1px solid #e2e8f0;
-  background: #fff;
-  border-radius: 10px;
-  padding: 0.65rem 0.75rem;
+  border: none;
+  background: transparent;
+  border-radius: 12px;
+  padding: 0;
   text-align: left;
   cursor: pointer;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+  display: grid;
+  grid-template-columns: 1.45rem minmax(0, 1fr);
+  gap: 0.6rem;
+  align-items: stretch;
+  transition: transform 0.2s ease;
 }
 
 .queue-item:hover {
-  border-color: #c4b5fd;
   transform: translateY(-1px);
-}
-
-.queue-item.active {
-  border-color: #8b5cf6;
-  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.12);
 }
 
 .queue-item-top {
@@ -563,22 +565,96 @@ onBeforeUnmount(() => {
 }
 
 .queue-label {
-  font-size: 0.76rem;
+  font-size: 0.72rem;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: #64748b;
+  letter-spacing: 0.06em;
+  color: var(--ui-text-secondary);
 }
 
 .queue-name {
   margin: 0.42rem 0 0.2rem;
-  color: #1e293b;
+  color: var(--ui-heading);
   font-weight: 600;
 }
 
 .queue-meta {
   margin: 0;
-  color: #64748b;
+  color: var(--ui-text-secondary);
   font-size: 0.82rem;
+}
+
+.queue-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.queue-line {
+  width: 3px;
+  flex: 1;
+  background: var(--ui-border);
+  border-radius: 999px;
+  transition: background 0.25s ease;
+}
+
+.queue-line.active {
+  background: linear-gradient(180deg, var(--tp-purple-500) 0%, var(--ui-coral) 100%);
+}
+
+.queue-line-top {
+  margin-bottom: 0.18rem;
+}
+
+.queue-line-bottom {
+  margin-top: 0.18rem;
+}
+
+.queue-item:first-child .queue-line-top,
+.queue-item:last-child .queue-line-bottom {
+  opacity: 0;
+}
+
+.queue-node {
+  width: 0.72rem;
+  height: 0.72rem;
+  border-radius: 999px;
+  border: 2px solid var(--ui-border);
+  background: var(--ui-surface);
+  box-shadow: 0 0 0 4px rgba(164, 53, 240, 0.08);
+  transition: border-color 0.25s ease, background-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.queue-item.done .queue-node {
+  background: var(--tp-purple-500);
+  border-color: var(--tp-purple-500);
+  box-shadow: 0 0 0 6px rgba(164, 53, 240, 0.2);
+}
+
+.queue-item.current .queue-node {
+  background: var(--ui-accent-2);
+  border-color: var(--ui-accent-2);
+  box-shadow: 0 0 0 6px rgba(79, 70, 229, 0.22);
+}
+
+.queue-item-body {
+  border: 1px solid var(--ui-border-soft);
+  background: var(--ui-surface);
+  border-radius: 12px;
+  padding: 0.65rem 0.75rem;
+  box-shadow: var(--ui-shadow-xs);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.queue-item:hover .queue-item-body {
+  border-color: color-mix(in srgb, var(--ui-accent-2) 30%, var(--ui-border));
+  box-shadow: var(--ui-shadow-sm);
+  transform: translateY(-1px);
+}
+
+.queue-item.active .queue-item-body {
+  border-color: var(--ui-accent-2);
+  box-shadow: 0 0 0 3px var(--ui-focus-ring);
 }
 
 .material-head {
@@ -618,15 +694,15 @@ onBeforeUnmount(() => {
 .pdf-name {
   margin: 0;
   font-size: 0.84rem;
-  color: #64748b;
+  color: var(--ui-text-secondary);
 }
 
 .pdf-frame {
   width: 100%;
   min-height: min(65vh, 760px);
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--ui-border-soft);
   border-radius: 8px;
-  background: #fff;
+  background: var(--ui-surface);
 }
 
 .pdf-wrap:fullscreen {

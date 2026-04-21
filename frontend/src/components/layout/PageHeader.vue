@@ -60,21 +60,48 @@ function onBack(): void {
 
 <style scoped>
 .page-header {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 1rem 1.15rem;
-  border: 1px solid var(--ui-border-soft);
+  padding: 1.25rem 1.4rem;
+  border: 1px solid var(--ui-border);
   border-radius: var(--ui-radius-lg);
-  background: linear-gradient(135deg, #fff 0%, #fcfbff 72%);
-  box-shadow: var(--ui-shadow-sm);
+  background: linear-gradient(135deg, #ffffff 0%, #f6f1ff 52%, #fff5f0 100%);
+  box-shadow: var(--ui-shadow-md);
+  overflow: hidden;
+}
+
+.page-header::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: -80px;
+  width: 220px;
+  height: 220px;
+  background: radial-gradient(circle at center, rgba(249, 115, 96, 0.16), transparent 64%);
+  pointer-events: none;
+}
+
+.page-header::before {
+  content: '';
+  position: absolute;
+  left: -70px;
+  bottom: -110px;
+  width: 240px;
+  height: 240px;
+  background: radial-gradient(circle at center, rgba(99, 102, 241, 0.14), transparent 64%);
+  pointer-events: none;
 }
 
 .left {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
+  gap: 0.5rem;
+  min-width: 0;
 }
 
 .heading-group {
@@ -89,7 +116,8 @@ function onBack(): void {
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--ui-text-secondary);
+  color: var(--ui-text-primary);
+  opacity: 0.72;
 }
 
 .left h1 {
@@ -108,6 +136,8 @@ function onBack(): void {
 }
 
 .right {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: 0.65rem;
@@ -119,8 +149,8 @@ function onBack(): void {
   font-size: 0.86rem;
   font-weight: 600;
   padding: 0.38rem 0.82rem;
-  background: var(--ui-accent);
-  border: 1px solid var(--ui-accent);
+  background: linear-gradient(135deg, var(--ui-accent) 0%, var(--ui-accent-2) 100%);
+  border: 1px solid color-mix(in srgb, var(--ui-accent-2) 70%, var(--ui-accent));
   color: #fff;
   border-radius: 999px;
   transition: background-color var(--ui-transition-fast), border-color var(--ui-transition-fast),
@@ -128,8 +158,8 @@ function onBack(): void {
 }
 
 .back-btn:hover {
-  background: var(--ui-accent-strong);
-  border-color: var(--ui-accent-strong);
+  background: linear-gradient(135deg, var(--ui-accent-strong) 0%, var(--ui-accent-2) 100%);
+  border-color: var(--ui-accent-2);
   transform: translateY(-1px);
 }
 

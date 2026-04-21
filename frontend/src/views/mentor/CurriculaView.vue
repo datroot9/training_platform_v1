@@ -266,14 +266,15 @@ function onPageChange(event: { first: number; rows: number }): void {
 .curricula-page {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 1.25rem;
 }
 
 .table-shell {
-  background: #fff;
-  border: 1px solid var(--brand-border-soft);
-  border-radius: 12px;
-  padding: 1rem;
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border-soft);
+  border-radius: var(--ui-radius-md);
+  padding: 1.25rem;
+  box-shadow: var(--ui-shadow-sm);
 }
 
 .table-tools {

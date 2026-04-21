@@ -3,6 +3,7 @@ import Toast from 'primevue/toast'
 import Drawer from 'primevue/drawer'
 import { computed, onMounted, provide, ref, watch } from 'vue'
 import { RouterView, useRouter } from 'vue-router'
+import ChangePasswordDialog from '../../components/account/ChangePasswordDialog.vue'
 import TraineeRightRailContent from '../../components/trainee/TraineeRightRailContent.vue'
 import { useMediaQuery } from '../../composables/useMediaQuery'
 import { traineeAssignmentContextKey, useTraineeAssignment } from '../../composables/useTraineeAssignment'
@@ -17,6 +18,7 @@ provide(traineeAssignmentContextKey, assignmentCtx)
 const isLargeScreen = useMediaQuery('(min-width: 1024px)')
 const showDockedRail = computed(() => isLargeScreen.value)
 const drawerOpen = ref(false)
+const changePasswordVisible = ref(false)
 
 watch(isLargeScreen, (wide) => {
   if (wide) drawerOpen.value = false
@@ -30,13 +32,18 @@ async function signOut(): Promise<void> {
   await auth.logout()
   await router.replace('/login')
 }
+
+function openChangePasswordDialog(): void {
+  drawerOpen.value = false
+  changePasswordVisible.value = true
+}
 </script>
 
 <template>
   <div class="layout trainee-shell" :class="{ 'layout--dock-rail': showDockedRail }">
     <div class="workspace">
       <aside v-if="showDockedRail" class="left-rail" aria-label="Trainee tools">
-        <TraineeRightRailContent variant="dock" @logout="signOut" />
+        <TraineeRightRailContent variant="dock" @logout="signOut" @open-change-password="openChangePasswordDialog" />
       </aside>
 
       <main class="content">
@@ -63,20 +70,29 @@ async function signOut(): Promise<void> {
       :block-scroll="true"
       class="trainee-overview-drawer"
     >
-      <TraineeRightRailContent variant="drawer" @dismiss="drawerOpen = false" @logout="signOut" />
+      <TraineeRightRailContent
+        variant="drawer"
+        @dismiss="drawerOpen = false"
+        @logout="signOut"
+        @open-change-password="openChangePasswordDialog"
+      />
     </Drawer>
+
+    <ChangePasswordDialog v-model:visible="changePasswordVisible" />
   </div>
 </template>
 
 <style scoped>
 .layout {
+  position: relative;
   min-height: 100vh;
   display: block;
-  background: linear-gradient(135deg, #f6f1ff 0%, #f8f8ff 34%, #edf2ff 100%);
+  background: var(--ui-bg-gradient);
+  isolation: isolate;
 }
 
 .trainee-shell {
-  --trainee-accent: #7c3aed;
+  --trainee-accent: var(--tp-purple-500);
 }
 
 .workspace {
@@ -87,24 +103,32 @@ async function signOut(): Promise<void> {
 }
 
 .layout--dock-rail .workspace {
-  grid-template-columns: minmax(250px, 280px) minmax(0, 1fr);
+  grid-template-columns: minmax(260px, 288px) minmax(0, 1fr);
 }
 
 .content {
-  padding: 1.1rem 1.15rem;
+  padding: 1.35rem 1.5rem 2rem;
   min-width: 0;
+  max-width: 1320px;
+  margin: 0 auto;
+  width: 100%;
+  border: 1px solid var(--ui-border-soft);
+  border-radius: var(--ui-radius-xl);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.86) 0%, rgba(238, 244, 255, 0.88) 54%, rgba(255, 244, 240, 0.86) 100%);
+  box-shadow: var(--ui-shadow-sm);
+  backdrop-filter: blur(2px);
 }
 
 .left-rail {
-  border-right: 1px solid #ddd6fe;
-  background: rgba(255, 255, 255, 0.86);
-  backdrop-filter: blur(4px);
+  border-right: 1px solid var(--ui-border);
+  background: linear-gradient(180deg, #ffffff 0%, #f2f5ff 58%, #fff5f0 100%);
   padding: 1rem 0.9rem;
   overflow: auto;
   min-height: 0;
   position: sticky;
   top: 0;
   height: 100vh;
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.55), 6px 0 20px -16px rgba(47, 56, 80, 0.28);
 }
 
 .fab-open {
@@ -130,8 +154,8 @@ async function signOut(): Promise<void> {
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  background: linear-gradient(145deg, #ede9fe, #fff);
-  border: 2px solid #c4b5fd;
+  background: linear-gradient(145deg, var(--tp-purple-500), var(--ui-coral));
+  border: 2px solid rgba(255, 255, 255, 0.9);
 }
 
 .fab-avatar {
@@ -139,7 +163,7 @@ async function signOut(): Promise<void> {
   z-index: 1;
   font-size: 0.78rem;
   font-weight: 800;
-  color: #5b21b6;
+  color: #ffffff;
   letter-spacing: -0.02em;
 }
 
@@ -156,6 +180,7 @@ async function signOut(): Promise<void> {
 @media (max-width: 900px) {
   .content {
     padding: 1rem;
+    border-radius: var(--ui-radius-lg);
   }
 }
 </style>
