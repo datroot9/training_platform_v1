@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import Button from 'primevue/button'
 import Card from 'primevue/card'
 import Message from 'primevue/message'
@@ -7,12 +7,12 @@ import ProgressSpinner from 'primevue/progressspinner'
 import Tag from 'primevue/tag'
 import PageHeader from '../../components/layout/PageHeader.vue'
 import {
-  allowedTaskStatusTargets,
   injectTraineeAssignment,
+  taskPrimaryAction,
   taskStatusLabel,
   taskStatusTagSeverity,
 } from '../../composables/useTraineeAssignment'
-import type { AssignmentTaskResponse, TaskStatus } from '../../api/types'
+import type { AssignmentTaskResponse } from '../../api/types'
 
 const {
   assignment,
@@ -24,65 +24,127 @@ const {
   totalTaskCount,
   progressPercent,
   updatingTaskIds,
-  downloadPdf,
+  previewFileName,
+  previewUrl,
+  previewLoading,
+  previewError,
   setTaskStatus,
+  loadMaterialPreview,
+  clearMaterialPreview,
+  downloadPreviewedPdf,
 } = injectTraineeAssignment()
 
-const nextTask = computed(() => {
-  const list = tasks.value
-  return list.find((t) => t.status !== 'DONE') ?? null
-})
+const orderedTasks = computed(() => [...tasks.value].sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id))
+const selectedTaskId = ref<number | null>(null)
+const pdfShellRef = ref<HTMLElement | null>(null)
+const isPdfFullscreen = ref(false)
 
-const upcomingTasks = computed(() => {
-  const list = tasks.value
-  const idx = list.findIndex((t) => t.status !== 'DONE')
-  if (idx < 0) return []
-  return list.slice(idx + 1, idx + 4)
+const selectedTask = computed<AssignmentTaskResponse | null>(() => {
+  if (selectedTaskId.value == null) return null
+  return orderedTasks.value.find((task) => task.id === selectedTaskId.value) ?? null
 })
-
-const allDone = computed(() => hasAssignment.value && tasks.value.length > 0 && nextTask.value == null)
 
 const mentorNameDisplay = computed(() => assignment.value?.mentorName?.trim() || '-')
 const mentorEmailDisplay = computed(() => assignment.value?.mentorEmail?.trim() || '-')
 const estimatedDaysDisplay = computed(() => assignment.value?.totalEstimatedDays)
+const allDone = computed(() => hasAssignment.value && tasks.value.length > 0 && completedTaskCount.value === totalTaskCount.value)
 
-const orderedTasks = computed(() => [...tasks.value].sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id))
+const selectedPrimaryAction = computed(() => {
+  if (!selectedTask.value) return null
+  return taskPrimaryAction(selectedTask.value.status)
+})
 
-function statusActionLabel(status: TaskStatus): string {
-  switch (status) {
-    case 'IN_PROGRESS':
-      return 'Mark in progress'
-    case 'DONE':
-      return 'Mark done'
-    case 'NOT_STARTED':
-      return 'Mark not started'
-    default:
-      return status
-  }
+const previewIframeSrc = computed(() => {
+  if (!previewUrl.value) return ''
+  // Best-effort: ask browser PDF viewer to hide native toolbar controls.
+  return `${previewUrl.value}#toolbar=0&navpanes=0&statusbar=0&messages=0`
+})
+
+function buildTaskPdfName(title?: string | null): string {
+  const raw = (title ?? '').trim()
+  if (!raw) return 'learning-material.pdf'
+  const sanitized = raw
+    .replace(/[\\/:*?"<>|]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 120)
+  if (!sanitized) return 'learning-material.pdf'
+  return `${sanitized}.pdf`
 }
 
-function statusActionSeverity(status: TaskStatus): 'success' | 'secondary' {
-  return status === 'DONE' ? 'success' : 'secondary'
+function syncFullscreenState(): void {
+  isPdfFullscreen.value = document.fullscreenElement === pdfShellRef.value
 }
 
-function statusTargets(task: AssignmentTaskResponse): TaskStatus[] {
-  return allowedTaskStatusTargets(task.status)
-}
-
-async function changeTaskStatus(taskId: number, target: TaskStatus): Promise<void> {
+async function togglePdfFullscreen(): Promise<void> {
+  const shell = pdfShellRef.value
+  if (!shell) return
   try {
-    await setTaskStatus(taskId, target)
+    if (document.fullscreenElement === shell) {
+      await document.exitFullscreen()
+      return
+    }
+    await shell.requestFullscreen()
   } catch {
-    // Error message is already surfaced by the shared composable.
+    // Browser denied fullscreen request (gesture or policy).
   }
 }
+
+watch(
+  orderedTasks,
+  (list) => {
+    if (!list.length) {
+      selectedTaskId.value = null
+      clearMaterialPreview()
+      return
+    }
+    const stillExists = selectedTaskId.value != null && list.some((task) => task.id === selectedTaskId.value)
+    if (!stillExists) {
+      selectedTaskId.value = list.find((task) => task.status !== 'DONE')?.id ?? list[0].id
+    }
+  },
+  { immediate: true },
+)
+
+watch(
+  selectedTask,
+  async (task) => {
+    if (!task || task.learningMaterialId == null) {
+      clearMaterialPreview()
+      return
+    }
+    await loadMaterialPreview(task.learningMaterialId, buildTaskPdfName(task.title))
+  },
+  { immediate: true },
+)
+
+function selectTask(taskId: number): void {
+  selectedTaskId.value = taskId
+}
+
+async function runPrimaryAction(task: AssignmentTaskResponse): Promise<void> {
+  const action = taskPrimaryAction(task.status)
+  try {
+    await setTaskStatus(task.id, action.target)
+  } catch {
+    // Shared composable already sets surface error message.
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('fullscreenchange', syncFullscreenState)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('fullscreenchange', syncFullscreenState)
+})
 </script>
 
 <template>
   <div class="wrap">
     <PageHeader
       title="My assignment"
-      description="Focus on your next step and what is coming up. Large actions so you can continue quickly."
+      description="Work through your queue and review learning material side by side."
       :tag-value="hasAssignment ? `${progressPercent}% complete` : undefined"
       tag-severity="info"
     />
@@ -99,301 +161,360 @@ async function changeTaskStatus(taskId: number, target: TaskStatus): Promise<voi
       </Message>
     </template>
 
-    <template v-else-if="allDone">
-      <Message severity="success" :closable="false">
-        You completed all {{ totalTaskCount }} tasks for <strong>{{ assignment!.curriculumName }}</strong>. Great work.
-      </Message>
-    </template>
-
-    <template v-else>
-      <section class="meta-card">
-        <h2 class="meta-title">{{ assignment!.curriculumName }}</h2>
-        <p class="meta-desc">
-          {{ assignment!.curriculumDescription?.trim() || 'No curriculum description provided by your mentor yet.' }}
-        </p>
-        <div class="meta-grid">
-          <p><strong>Mentor:</strong> {{ mentorNameDisplay }}</p>
-          <p><strong>Mentor email:</strong> {{ mentorEmailDisplay }}</p>
-          <p>
-            <strong>Estimated completion:</strong>
-            <span v-if="estimatedDaysDisplay != null">{{ estimatedDaysDisplay }} days</span>
-            <span v-else>Not set</span>
+    <div v-else class="focus-grid">
+      <section class="task-pane">
+        <section class="meta-card">
+          <h2 class="meta-title">{{ assignment!.curriculumName }}</h2>
+          <p class="meta-desc">
+            {{ assignment!.curriculumDescription?.trim() || 'No curriculum description provided by your mentor yet.' }}
           </p>
-        </div>
-      </section>
-
-      <p class="summary">
-        <span class="muted">{{ completedTaskCount }} of {{ totalTaskCount }} tasks done</span>
-      </p>
-
-      <section v-if="nextTask" class="hero">
-        <p class="eyebrow">Next up</p>
-        <Card class="hero-card">
-          <template #title>
-            <div class="hero-title-row">
-              <span>{{ nextTask.title }}</span>
-              <Tag
-                :value="taskStatusLabel(nextTask.status)"
-                :severity="taskStatusTagSeverity(nextTask.status)"
-                rounded
-              />
-            </div>
-          </template>
-          <template #content>
-            <p v-if="nextTask.description" class="desc">{{ nextTask.description }}</p>
-            <p class="estimate">Estimated: {{ nextTask.estimatedDays != null ? `${nextTask.estimatedDays} day(s)` : 'Not set' }}</p>
-            <div class="hero-actions">
-              <div class="status-actions">
-                <Button
-                  v-for="target in statusTargets(nextTask)"
-                  :key="`next-${target}`"
-                  :label="statusActionLabel(target)"
-                  :severity="statusActionSeverity(target)"
-                  :loading="updatingTaskIds.has(nextTask.id)"
-                  :disabled="updatingTaskIds.has(nextTask.id)"
-                  size="small"
-                  outlined
-                  @click="changeTaskStatus(nextTask.id, target)"
-                />
-              </div>
-              <Button
-                v-if="nextTask.learningMaterialId != null"
-                label="Download PDF for this step"
-                icon="pi pi-download"
-                size="large"
-                @click="downloadPdf(nextTask.learningMaterialId)"
-              />
-              <p v-else class="muted small">This step has no PDF. Continue when you have finished the activity.</p>
-            </div>
-          </template>
-        </Card>
-      </section>
-
-      <section v-if="upcomingTasks.length" class="upcoming">
-        <h2 class="section-title">Coming up</h2>
-        <div class="upcoming-grid">
-          <Card v-for="t in upcomingTasks" :key="t.id" class="mini-card">
-            <template #title>
-              <span class="mini-title">{{ t.title }}</span>
-            </template>
-            <template #content>
-              <Tag :value="taskStatusLabel(t.status)" :severity="taskStatusTagSeverity(t.status)" class="mb-tag" />
-              <p class="estimate compact">
-                Estimated: {{ t.estimatedDays != null ? `${t.estimatedDays} day(s)` : 'Not set' }}
-              </p>
-              <div class="status-actions compact">
-                <Button
-                  v-for="target in statusTargets(t)"
-                  :key="`up-${t.id}-${target}`"
-                  :label="statusActionLabel(target)"
-                  :severity="statusActionSeverity(target)"
-                  :loading="updatingTaskIds.has(t.id)"
-                  :disabled="updatingTaskIds.has(t.id)"
-                  size="small"
-                  text
-                  @click="changeTaskStatus(t.id, target)"
-                />
-              </div>
-              <Button
-                v-if="t.learningMaterialId != null"
-                label="PDF"
-                icon="pi pi-file-pdf"
-                size="small"
-                text
-                @click="downloadPdf(t.learningMaterialId)"
-              />
-            </template>
-          </Card>
-        </div>
-      </section>
-
-      <section class="all-tasks">
-        <h2 class="section-title">All tasks</h2>
-        <Card v-for="task in orderedTasks" :key="`all-${task.id}`" class="task-row">
-          <template #title>
-            <div class="task-row-title">
-              <span>Step {{ task.sortOrder }} · {{ task.title }}</span>
-              <Tag :value="taskStatusLabel(task.status)" :severity="taskStatusTagSeverity(task.status)" rounded />
-            </div>
-          </template>
-          <template #content>
-            <p v-if="task.description" class="desc compact">{{ task.description }}</p>
-            <p class="estimate compact">
-              Estimated: {{ task.estimatedDays != null ? `${task.estimatedDays} day(s)` : 'Not set' }}
+          <div class="meta-grid">
+            <p><strong>Mentor:</strong> {{ mentorNameDisplay }}</p>
+            <p><strong>Mentor email:</strong> {{ mentorEmailDisplay }}</p>
+            <p>
+              <strong>Estimated completion:</strong>
+              <span v-if="estimatedDaysDisplay != null">{{ estimatedDaysDisplay }} days</span>
+              <span v-else>Not set</span>
             </p>
-            <div class="task-row-actions">
-              <div class="status-actions">
-                <Button
-                  v-for="target in statusTargets(task)"
-                  :key="`all-status-${task.id}-${target}`"
-                  :label="statusActionLabel(target)"
-                  :severity="statusActionSeverity(target)"
-                  :loading="updatingTaskIds.has(task.id)"
-                  :disabled="updatingTaskIds.has(task.id)"
-                  size="small"
-                  outlined
-                  @click="changeTaskStatus(task.id, target)"
-                />
-              </div>
+          </div>
+        </section>
+
+        <p class="summary">{{ completedTaskCount }} of {{ totalTaskCount }} tasks done</p>
+        <Message v-if="allDone" severity="success" :closable="false" class="mb-msg">
+          Great work. You completed all tasks for this curriculum.
+        </Message>
+
+        <Card v-if="selectedTask" class="focus-card">
+          <template #title>
+            <div class="focus-title-row">
+              <span>Step {{ selectedTask.sortOrder }} · {{ selectedTask.title }}</span>
+              <Tag :value="taskStatusLabel(selectedTask.status)" :severity="taskStatusTagSeverity(selectedTask.status)" rounded />
+            </div>
+          </template>
+          <template #content>
+            <p v-if="selectedTask.description" class="desc">{{ selectedTask.description }}</p>
+            <p class="estimate">
+              Estimated: {{ selectedTask.estimatedDays != null ? `${selectedTask.estimatedDays} day(s)` : 'Not set' }}
+            </p>
+            <div class="focus-actions">
               <Button
-                v-if="task.learningMaterialId != null"
-                label="Download PDF"
-                icon="pi pi-download"
-                size="small"
-                text
-                @click="downloadPdf(task.learningMaterialId)"
+                v-if="selectedPrimaryAction"
+                :label="selectedPrimaryAction.label"
+                :severity="selectedPrimaryAction.severity"
+                :loading="updatingTaskIds.has(selectedTask.id)"
+                :disabled="updatingTaskIds.has(selectedTask.id)"
+                @click="runPrimaryAction(selectedTask)"
               />
+              <p v-if="selectedTask.learningMaterialId == null" class="muted small">
+                This step has no PDF attached.
+              </p>
             </div>
           </template>
         </Card>
+
+        <section class="queue">
+          <h3 class="queue-title">Task queue</h3>
+          <div class="queue-list">
+            <button
+              v-for="task in orderedTasks"
+              :key="task.id"
+              class="queue-item"
+              :class="{ active: task.id === selectedTaskId }"
+              type="button"
+              @click="selectTask(task.id)"
+            >
+              <div class="queue-item-top">
+                <span class="queue-label">Step {{ task.sortOrder }}</span>
+                <Tag :value="taskStatusLabel(task.status)" :severity="taskStatusTagSeverity(task.status)" />
+              </div>
+              <p class="queue-name">{{ task.title }}</p>
+              <p class="queue-meta">{{ task.learningMaterialId != null ? 'PDF available' : 'No PDF' }}</p>
+            </button>
+          </div>
+        </section>
       </section>
-    </template>
+
+      <aside class="material-pane">
+        <div class="material-head">
+          <h3 class="material-title">Learning material</h3>
+          <div class="material-actions">
+            <Button
+              label="Download"
+              icon="pi pi-download"
+              text
+              size="small"
+              :disabled="!previewUrl || previewLoading"
+              @click="downloadPreviewedPdf"
+            />
+            <Button
+              :label="isPdfFullscreen ? 'Exit full screen' : 'Full screen'"
+              :icon="isPdfFullscreen ? 'pi pi-window-minimize' : 'pi pi-window-maximize'"
+              text
+              size="small"
+              :disabled="!previewUrl || previewLoading"
+              @click="togglePdfFullscreen"
+            />
+          </div>
+        </div>
+
+        <div v-if="previewLoading" class="material-loading">
+          <ProgressSpinner stroke-width="3" animation-duration=".8s" style="width: 2.2rem; height: 2.2rem" />
+          <p class="muted">Loading PDF...</p>
+        </div>
+        <Message v-else-if="previewError" severity="error" :closable="false">{{ previewError }}</Message>
+        <Message v-else-if="!selectedTask" severity="info" :closable="false">
+          Select a task to review its details and learning material.
+        </Message>
+        <Message v-else-if="selectedTask.learningMaterialId == null" severity="info" :closable="false">
+          This task has no PDF material attached.
+        </Message>
+        <div v-else-if="previewUrl" ref="pdfShellRef" class="pdf-wrap">
+          <p class="pdf-name">{{ previewFileName || 'learning-material.pdf' }}</p>
+          <iframe :src="previewIframeSrc" title="Learning material preview" class="pdf-frame" />
+        </div>
+      </aside>
+    </div>
   </div>
 </template>
 
 <style scoped>
 .wrap {
-  max-width: 48rem;
+  width: 100%;
 }
+
 .mb-msg {
   margin-top: 0.75rem;
 }
+
 .centered {
   display: flex;
   justify-content: center;
   padding: 2rem;
 }
-.summary {
-  margin: 0.25rem 0 1.25rem;
-  font-size: 1rem;
+
+.focus-grid {
+  margin-top: 0.25rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  gap: 1rem;
+  align-items: start;
 }
+
+.task-pane,
+.material-pane {
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid #ddd6fe;
+  border-radius: 12px;
+  padding: 1rem;
+}
+
 .meta-card {
   border: 1px solid #ddd6fe;
   background: #faf5ff;
   border-radius: 12px;
   padding: 0.9rem 1rem;
-  margin: 0.25rem 0 1rem;
 }
+
 .meta-title {
   margin: 0;
   font-size: 1.1rem;
 }
+
 .meta-desc {
   margin: 0.35rem 0 0.65rem;
   color: #475569;
   line-height: 1.45;
 }
+
 .meta-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 0.35rem 0.9rem;
 }
+
 .meta-grid p {
   margin: 0;
   font-size: 0.92rem;
 }
-.muted {
-  color: var(--text-muted);
-}
-.small {
-  font-size: 0.9rem;
-  margin: 0;
-}
-.hero {
-  margin-bottom: 2rem;
-}
-.eyebrow {
-  margin: 0 0 0.5rem;
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--trainee-accent, #6d28d9);
-}
-.hero-card {
-  border: 2px solid #ddd6fe;
-  box-shadow: 0 8px 24px rgba(109, 40, 217, 0.08);
-}
-.hero-title-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-  font-size: 1.25rem;
-  line-height: 1.35;
-}
-.desc {
-  margin: 0 0 1rem;
-  color: #475569;
-  line-height: 1.55;
-  font-size: 1rem;
-}
-.hero-actions {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.5rem;
-}
-.estimate {
-  margin: 0 0 0.65rem;
-  color: #475569;
-  font-size: 0.92rem;
-}
-.estimate.compact {
-  margin-bottom: 0.45rem;
-  font-size: 0.86rem;
-}
-.status-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-}
-.status-actions.compact {
-  margin-bottom: 0.35rem;
-}
-.section-title {
-  margin: 0 0 0.75rem;
-  font-size: 1.1rem;
+
+.summary {
+  margin: 0.7rem 0;
   font-weight: 600;
   color: #334155;
 }
-.upcoming-grid {
-  display: grid;
-  gap: 0.75rem;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+
+.focus-card {
+  margin-bottom: 0.85rem;
+  border: 1px solid #ddd6fe;
 }
-.mini-card {
-  border: 1px solid #e2e8f0;
-  box-shadow: none;
+
+.focus-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.65rem;
+  flex-wrap: wrap;
 }
-.mini-title {
+
+.desc {
+  margin: 0 0 0.8rem;
+  color: #475569;
+  line-height: 1.5;
+}
+
+.estimate {
+  margin: 0 0 0.8rem;
+  color: #475569;
+  font-size: 0.92rem;
+}
+
+.focus-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.queue-title {
+  margin: 0 0 0.5rem;
   font-size: 0.95rem;
+}
+
+.queue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.queue-item {
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  border-radius: 10px;
+  padding: 0.65rem 0.75rem;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.queue-item:hover {
+  border-color: #c4b5fd;
+  transform: translateY(-1px);
+}
+
+.queue-item.active {
+  border-color: #8b5cf6;
+  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.12);
+}
+
+.queue-item-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.queue-label {
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+}
+
+.queue-name {
+  margin: 0.42rem 0 0.2rem;
+  color: #1e293b;
   font-weight: 600;
 }
-.mb-tag {
-  margin-bottom: 0.35rem;
+
+.queue-meta {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.82rem;
 }
-.all-tasks {
-  margin-top: 1rem;
+
+.material-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+  align-items: center;
+  margin-bottom: 0.6rem;
 }
-.task-row {
+
+.material-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.material-title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.material-loading {
+  min-height: 14rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pdf-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.pdf-name {
+  margin: 0;
+  font-size: 0.84rem;
+  color: #64748b;
+}
+
+.pdf-frame {
+  width: 100%;
+  min-height: min(65vh, 760px);
   border: 1px solid #e2e8f0;
-  box-shadow: none;
-  margin-bottom: 0.75rem;
+  border-radius: 8px;
+  background: #fff;
 }
-.task-row-title {
-  display: flex;
-  justify-content: space-between;
-  gap: 0.6rem;
-  align-items: center;
-  flex-wrap: wrap;
+
+.pdf-wrap:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  background: #0f172a;
+  padding: 0.75rem;
+  gap: 0.65rem;
 }
-.task-row-actions {
-  display: flex;
-  justify-content: space-between;
-  gap: 0.6rem;
-  flex-wrap: wrap;
-  align-items: center;
+
+.pdf-wrap:fullscreen .pdf-name {
+  color: #e2e8f0;
+}
+
+.pdf-wrap:fullscreen .pdf-frame {
+  flex: 1;
+  min-height: 0;
+  border-color: #334155;
+  border-radius: 6px;
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.small {
+  margin: 0;
+  font-size: 0.88rem;
+}
+
+@media (max-width: 1100px) {
+  .focus-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .pdf-frame {
+    min-height: 58vh;
+  }
 }
 </style>

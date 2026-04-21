@@ -499,25 +499,6 @@ onMounted(async () => {
           />
         </div>
 
-        <div class="quick-upload">
-          <h3 class="sub-title">Quick upload (optional sort order)</h3>
-          <div class="quick-row">
-            <label>
-              PDF
-              <input type="file" accept="application/pdf" class="file-input" @change="onQuickFileChange" />
-            </label>
-            <label>
-              Sort order (optional)
-              <InputNumber v-model="quickSortOrder" :min="1" :use-grouping="false" placeholder="Auto" />
-            </label>
-            <Button
-              label="Upload"
-              :disabled="!quickFile || curriculumId == null"
-              :loading="quickUploading"
-              @click="uploadQuickSingle"
-            />
-          </div>
-        </div>
 
         <h3 class="sub-title">Uploaded</h3>
         <DataTable

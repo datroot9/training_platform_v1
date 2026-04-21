@@ -20,6 +20,7 @@ const auth = useAuthStore()
 const router = useRouter()
 const {
   assignment,
+  tasks,
   loading,
   error,
   hasAssignment,
@@ -56,6 +57,8 @@ const greeting = computed(() => {
   if (h < 18) return 'Good afternoon'
   return 'Good evening'
 })
+
+const currentFocusTask = computed(() => tasks.value.find((task) => task.status !== 'DONE') ?? null)
 
 function go(path: string): void {
   void router.push(path)
@@ -107,6 +110,24 @@ function onLogout(): void {
       <Message v-else severity="info" :closable="false" class="msg">
         No active assignment yet. When your mentor assigns a curriculum, your progress will show here.
       </Message>
+
+      <section class="focus-block card">
+        <p class="section-label">Current focus</p>
+        <template v-if="hasAssignment && currentFocusTask">
+          <p class="focus-title">Step {{ currentFocusTask.sortOrder }} · {{ currentFocusTask.title }}</p>
+          <p class="focus-meta">
+            {{ currentFocusTask.learningMaterialId != null ? 'PDF attached' : 'No PDF attached' }}
+          </p>
+        </template>
+        <template v-else-if="hasAssignment">
+          <p class="focus-title">All tasks completed</p>
+          <p class="focus-meta">Nice work. Keep this pace and check back for your next assignment.</p>
+        </template>
+        <template v-else>
+          <p class="focus-title">Awaiting assignment</p>
+          <p class="focus-meta">Your mentor will assign a curriculum to get you started.</p>
+        </template>
+      </section>
 
       <section class="links card">
         <p class="section-label">Quick links</p>
@@ -224,6 +245,10 @@ function onLogout(): void {
   padding: 0.85rem 1rem;
 }
 
+.focus-block {
+  padding: 0.85rem 1rem;
+}
+
 .curriculum-name {
   margin: 0 0 0.5rem;
   font-size: 0.92rem;
@@ -240,6 +265,20 @@ function onLogout(): void {
   margin: 0.45rem 0 0;
   font-size: 0.8rem;
   color: var(--ui-text-secondary);
+}
+
+.focus-title {
+  margin: 0;
+  color: var(--ui-text-primary);
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.focus-meta {
+  margin: 0.35rem 0 0;
+  color: var(--ui-text-secondary);
+  font-size: 0.8rem;
 }
 
 .links {
