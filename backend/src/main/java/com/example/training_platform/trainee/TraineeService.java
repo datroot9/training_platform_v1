@@ -120,7 +120,11 @@ public class TraineeService {
                 row.getFullName(),
                 row.isActive(),
                 row.getMentorId(),
-                row.getCreatedAt()
+                row.getCreatedAt(),
+                row.getActiveAssignmentId(),
+                row.getActiveCurriculumName(),
+                row.getCompletedTaskCount(),
+                row.getTotalTaskCount()
         );
     }
 

@@ -8,6 +8,10 @@ public record TraineeResponse(
         String fullName,
         boolean active,
         Long mentorId,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        Long activeAssignmentId,
+        String activeCurriculumName,
+        Integer completedTaskCount,
+        Integer totalTaskCount
 ) {
 }

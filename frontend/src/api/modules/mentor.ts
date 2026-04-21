@@ -1,6 +1,7 @@
-import { requestJson } from '../client'
+import { ApiError, requestJson } from '../client'
 import type {
   AssignmentResponse,
+  AssignmentTaskResponse,
   CreateTraineeResponse,
   CurriculumDetailResponse,
   CurriculumResponse,
@@ -95,6 +96,29 @@ export async function replaceActiveAssignment(
     method: 'PUT',
     body: JSON.stringify({ curriculumId }),
   })
+}
+
+export async function getTraineeActiveAssignment(traineeId: number): Promise<AssignmentResponse> {
+  return requestJson<AssignmentResponse>(`/api/mentor/trainees/${traineeId}/assignments/active`)
+}
+
+/** Returns null when the trainee has no active assignment (HTTP 404 from API). */
+export async function getTraineeActiveAssignmentOrNull(traineeId: number): Promise<AssignmentResponse | null> {
+  try {
+    return await getTraineeActiveAssignment(traineeId)
+  } catch (e) {
+    if (e instanceof ApiError && e.httpStatus === 404) return null
+    throw e
+  }
+}
+
+export async function getTraineeAssignmentTasks(
+  traineeId: number,
+  assignmentId: number,
+): Promise<AssignmentTaskResponse[]> {
+  return requestJson<AssignmentTaskResponse[]>(
+    `/api/mentor/trainees/${traineeId}/assignments/${assignmentId}/tasks`,
+  )
 }
 
 export async function listCurricula(params: ListCurriculaParams = {}): Promise<PagedResponse<CurriculumResponse>> {

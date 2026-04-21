@@ -40,6 +40,11 @@ export interface TraineeResponse {
   active: boolean
   mentorId: number
   createdAt: string
+  /** Present when list API includes active assignment summary */
+  activeAssignmentId?: number | null
+  activeCurriculumName?: string | null
+  completedTaskCount?: number | null
+  totalTaskCount?: number | null
 }
 
 export interface CreateTraineeResponse {

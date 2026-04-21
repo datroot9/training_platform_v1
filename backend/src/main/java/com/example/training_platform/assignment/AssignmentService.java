@@ -144,6 +144,16 @@ public class AssignmentService {
         return taskDao.listAssignmentTasks(assignmentId).stream().map(this::mapAssignmentTask).toList();
     }
 
+    public AssignmentResponse getActiveAssignmentForMentor(Long mentorId, Long traineeId) {
+        assertTraineeBelongsToMentor(mentorId, traineeId);
+        return getActiveAssignment(traineeId);
+    }
+
+    public List<AssignmentTaskResponse> getAssignmentTasksForMentor(Long mentorId, Long traineeId, Long assignmentId) {
+        assertTraineeBelongsToMentor(mentorId, traineeId);
+        return getAssignmentTasks(traineeId, assignmentId);
+    }
+
     @Transactional
     public AssignmentTaskResponse updateTaskStatus(Long traineeId, Long assignmentId, Long taskId, String targetStatusRaw) {
         assertAssignmentBelongsToTrainee(traineeId, assignmentId);

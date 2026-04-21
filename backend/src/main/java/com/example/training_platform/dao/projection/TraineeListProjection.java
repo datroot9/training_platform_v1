@@ -17,4 +17,9 @@ public class TraineeListProjection {
     private boolean isActive;
     private Long mentorId;
     private LocalDateTime createdAt;
+    /** Null when trainee has no ACTIVE curriculum assignment */
+    private Long activeAssignmentId;
+    private String activeCurriculumName;
+    private Integer completedTaskCount;
+    private Integer totalTaskCount;
 }

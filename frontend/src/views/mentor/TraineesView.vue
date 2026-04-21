@@ -10,6 +10,8 @@ import InputIcon from 'primevue/inputicon'
 import InputText from 'primevue/inputtext'
 import Menu from 'primevue/menu'
 import Message from 'primevue/message'
+import ProgressBar from 'primevue/progressbar'
+import ProgressSpinner from 'primevue/progressspinner'
 import Paginator from 'primevue/paginator'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
@@ -18,8 +20,14 @@ import { useToast } from 'primevue/usetoast'
 import type { MenuItem } from 'primevue/menuitem'
 import { ApiError } from '../../api/client'
 import * as mentorApi from '../../api/modules/mentor'
-import type { CurriculumResponse, TraineeResponse } from '../../api/types'
+import type {
+  AssignmentResponse,
+  AssignmentTaskResponse,
+  CurriculumResponse,
+  TraineeResponse,
+} from '../../api/types'
 import PageHeader from '../../components/layout/PageHeader.vue'
+import { taskStatusLabel, taskStatusTagSeverity } from '../../composables/useTraineeAssignment'
 import { groupCurriculaByFamily } from '../../utils/curriculumGroups'
 
 const toast = useToast()
@@ -45,6 +53,27 @@ const first = ref(0)
 const pageRows = ref(8)
 const actionMenu = ref()
 const actionMenuItems = ref<MenuItem[]>([])
+
+const progressDialogVisible = ref(false)
+const progressTrainee = ref<TraineeResponse | null>(null)
+const progressAssignment = ref<AssignmentResponse | null>(null)
+const progressTasks = ref<AssignmentTaskResponse[]>([])
+const progressLoading = ref(false)
+const progressError = ref('')
+
+const orderedProgressTasks = computed(() =>
+  [...progressTasks.value].sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id),
+)
+
+const progressDialogCompleted = computed(() => orderedProgressTasks.value.filter((t) => t.status === 'DONE').length)
+
+const progressDialogTotal = computed(() => orderedProgressTasks.value.length)
+
+const progressDialogPercent = computed(() => {
+  const t = progressDialogTotal.value
+  if (t === 0) return 0
+  return Math.round((progressDialogCompleted.value / t) * 100)
+})
 
 const summaryCount = computed(() => totalRecords.value)
 const activeRowsCount = computed(() => rows.value.filter((row) => row.active).length)
@@ -108,6 +137,33 @@ function initials(name: string): string {
 
 function goToFirstPage(): void {
   first.value = 0
+}
+
+async function openProgressDialog(row: TraineeResponse): Promise<void> {
+  progressTrainee.value = row
+  progressDialogVisible.value = true
+  progressLoading.value = true
+  progressError.value = ''
+  progressAssignment.value = null
+  progressTasks.value = []
+  try {
+    const a = await mentorApi.getTraineeActiveAssignmentOrNull(row.id)
+    progressAssignment.value = a
+    if (a) {
+      progressTasks.value = await mentorApi.getTraineeAssignmentTasks(row.id, a.id)
+    }
+  } catch (e) {
+    progressError.value = e instanceof ApiError ? e.message : 'Failed to load progress'
+  } finally {
+    progressLoading.value = false
+  }
+}
+
+function closeProgressDialog(): void {
+  progressTrainee.value = null
+  progressAssignment.value = null
+  progressTasks.value = []
+  progressError.value = ''
 }
 
 async function load(): Promise<void> {
@@ -303,6 +359,13 @@ function showBulkComingSoon(): void {
 function openActionMenu(event: Event, row: TraineeResponse): void {
   actionMenuItems.value = [
     {
+      label: 'View progress',
+      icon: 'pi pi-chart-line',
+      command: () => {
+        void openProgressDialog(row)
+      },
+    },
+    {
       label: row.active ? 'Deactivate' : 'Activate',
       icon: row.active ? 'pi pi-pause' : 'pi pi-play',
       command: () => {
@@ -406,6 +469,18 @@ function onPageChange(event: { first: number; rows: number }): void {
             <div class="tag-row">
               <Tag value="Trainee" severity="info" rounded />
               <Tag :value="data.active ? 'Active' : 'Inactive'" :severity="data.active ? 'success' : 'danger'" rounded />
+            </div>
+          </template>
+        </Column>
+
+        <Column header="Progress" style="min-width: 11rem">
+          <template #body="{ data }">
+            <span v-if="data.activeAssignmentId == null" class="muted">No active assignment</span>
+            <div v-else class="roster-progress">
+              <p class="roster-progress-title">{{ data.activeCurriculumName ?? 'Curriculum' }}</p>
+              <p class="roster-progress-meta">
+                {{ data.completedTaskCount ?? 0 }} / {{ data.totalTaskCount ?? 0 }} tasks
+              </p>
             </div>
           </template>
         </Column>
@@ -518,6 +593,52 @@ function onPageChange(event: { first: number; rows: number }): void {
           @click="confirmAssign"
           :disabled="!assignCurriculumResolved || !assignTrainee"
         />
+      </template>
+    </Dialog>
+
+    <Dialog
+      v-model:visible="progressDialogVisible"
+      modal
+      :header="progressTrainee ? `Progress · ${progressTrainee.fullName}` : 'Progress'"
+      :style="{ width: 'min(40rem, 95vw)' }"
+      class="modern-dialog progress-dialog"
+      @hide="closeProgressDialog"
+    >
+      <div v-if="progressLoading" class="progress-dialog-spin">
+        <ProgressSpinner stroke-width="3" animation-duration=".8s" style="width: 2.75rem; height: 2.75rem" />
+      </div>
+      <template v-else>
+        <Message v-if="progressError" severity="error" :closable="false" class="mb-msg">{{ progressError }}</Message>
+        <template v-else-if="!progressAssignment">
+          <Message severity="info" :closable="false">
+            No active assignment. Assign a published curriculum to track this trainee here.
+          </Message>
+        </template>
+        <template v-else>
+          <div class="progress-head">
+            <div>
+              <p class="progress-curriculum">{{ progressAssignment.curriculumName }}</p>
+              <p v-if="progressAssignment.totalEstimatedDays != null" class="muted small">
+                Estimated {{ progressAssignment.totalEstimatedDays }} day(s) total
+              </p>
+            </div>
+            <Tag :value="`${progressDialogPercent}%`" severity="info" rounded />
+          </div>
+          <ProgressBar :value="progressDialogPercent" :show-value="false" class="progress-bar" />
+          <p class="progress-caption">{{ progressDialogCompleted }} / {{ progressDialogTotal }} tasks completed</p>
+          <ul class="task-readonly-list">
+            <li v-for="task in orderedProgressTasks" :key="task.id" class="task-readonly-row">
+              <div class="task-readonly-main">
+                <span class="task-order">{{ task.sortOrder }}.</span>
+                <span class="task-title">{{ task.title }}</span>
+              </div>
+              <Tag :value="taskStatusLabel(task.status)" :severity="taskStatusTagSeverity(task.status)" rounded />
+            </li>
+          </ul>
+        </template>
+      </template>
+      <template #footer>
+        <Button label="Close" @click="progressDialogVisible = false" />
       </template>
     </Dialog>
 
@@ -649,6 +770,113 @@ function onPageChange(event: { first: number; rows: number }): void {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
+}
+
+.roster-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.roster-progress-title {
+  margin: 0;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--ui-text-primary);
+  line-height: 1.25;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.roster-progress-meta {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--ui-text-secondary);
+}
+
+.progress-dialog-spin {
+  display: flex;
+  justify-content: center;
+  padding: 2rem 0;
+}
+
+.mb-msg {
+  margin-bottom: 0.75rem;
+}
+
+.progress-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.65rem;
+}
+
+.progress-curriculum {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--ui-heading);
+}
+
+.progress-bar {
+  margin-bottom: 0.35rem;
+}
+
+.progress-caption {
+  margin: 0 0 1rem;
+  font-size: 0.86rem;
+  color: var(--ui-text-secondary);
+}
+
+.small {
+  font-size: 0.82rem;
+  margin-top: 0.25rem;
+}
+
+.task-readonly-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--ui-border-soft);
+  border-radius: var(--ui-radius-md);
+  max-height: min(22rem, 50vh);
+  overflow: auto;
+}
+
+.task-readonly-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  padding: 0.65rem 0.85rem;
+  border-bottom: 1px solid var(--ui-border-soft);
+}
+
+.task-readonly-row:last-child {
+  border-bottom: none;
+}
+
+.task-readonly-main {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.task-order {
+  font-size: 0.78rem;
+  color: var(--ui-text-secondary);
+  flex-shrink: 0;
+}
+
+.task-title {
+  font-size: 0.9rem;
+  color: var(--ui-text-primary);
+  line-height: 1.35;
 }
 
 .dialog-fields {
