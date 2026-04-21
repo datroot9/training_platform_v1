@@ -63,6 +63,8 @@ const templateSubmitting = ref(false)
 
 const publishDialogVisible = ref(false)
 const publishSubmitting = ref(false)
+const deleteDraftDialogVisible = ref(false)
+const deleteDraftSubmitting = ref(false)
 
 const newVersionDialogVisible = ref(false)
 const newVersionLabel = ref('')
@@ -343,6 +345,11 @@ function askPublish(): void {
   publishDialogVisible.value = true
 }
 
+function askDeleteDraft(): void {
+  if (isPublished.value) return
+  deleteDraftDialogVisible.value = true
+}
+
 async function confirmPublish(): Promise<void> {
   if (!publishReady.value || isPublished.value) return
   error.value = ''
@@ -361,6 +368,27 @@ async function confirmPublish(): Promise<void> {
     error.value = e instanceof ApiError ? e.message : 'Publish failed'
   } finally {
     publishSubmitting.value = false
+  }
+}
+
+async function confirmDeleteDraft(): Promise<void> {
+  if (isPublished.value) return
+  error.value = ''
+  deleteDraftSubmitting.value = true
+  try {
+    await mentorApi.deleteCurriculumDraft(curriculumId.value)
+    deleteDraftDialogVisible.value = false
+    toast.add({
+      severity: 'success',
+      summary: 'Draft deleted',
+      detail: 'Curriculum draft was removed successfully.',
+      life: 2800,
+    })
+    await router.push({ name: 'mentor-curricula' })
+  } catch (e) {
+    error.value = e instanceof ApiError ? e.message : 'Could not delete curriculum draft'
+  } finally {
+    deleteDraftSubmitting.value = false
   }
 }
 
@@ -414,15 +442,26 @@ async function confirmCreateNewVersion(): Promise<void> {
         :tag-severity="headerTagSeverity"
       >
         <template #actions>
-          <div v-if="showVersionSwitcher" class="version-switch">
-            <span class="version-switch-label">Version</span>
-            <Select
-              :model-value="curriculumId"
-              :options="versionSelectOptions"
-              option-label="label"
-              option-value="value"
-              class="version-select"
-              @update:model-value="onPickVersion"
+          <div class="header-actions">
+            <div v-if="showVersionSwitcher" class="version-switch">
+              <span class="version-switch-label">Version</span>
+              <Select
+                :model-value="curriculumId"
+                :options="versionSelectOptions"
+                option-label="label"
+                option-value="value"
+                class="version-select"
+                @update:model-value="onPickVersion"
+              />
+            </div>
+            <Button
+              v-if="!isPublished"
+              label="Delete draft"
+              icon="pi pi-trash"
+              severity="danger"
+              outlined
+              size="small"
+              @click="askDeleteDraft"
             />
           </div>
         </template>
@@ -699,6 +738,27 @@ async function confirmCreateNewVersion(): Promise<void> {
   </Dialog>
 
   <Dialog
+    v-model:visible="deleteDraftDialogVisible"
+    modal
+    header="Delete draft"
+    :style="{ width: '30rem' }"
+  >
+    <p>
+      Delete this draft curriculum now? This action cannot be undone.
+    </p>
+    <template #footer>
+      <Button label="Cancel" text :disabled="deleteDraftSubmitting" @click="deleteDraftDialogVisible = false" />
+      <Button
+        label="Delete draft"
+        severity="danger"
+        :loading="deleteDraftSubmitting"
+        :disabled="deleteDraftSubmitting"
+        @click="confirmDeleteDraft"
+      />
+    </template>
+  </Dialog>
+
+  <Dialog
     v-model:visible="newVersionDialogVisible"
     modal
     header="Create new draft version"
@@ -742,6 +802,14 @@ async function confirmCreateNewVersion(): Promise<void> {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.6rem;
   flex-wrap: wrap;
 }
 
@@ -867,6 +935,10 @@ async function confirmCreateNewVersion(): Promise<void> {
 
   .actions,
   .toolbar-end {
+    justify-content: flex-start;
+  }
+
+  .header-actions {
     justify-content: flex-start;
   }
 }
