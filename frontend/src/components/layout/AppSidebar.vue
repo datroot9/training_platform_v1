@@ -18,8 +18,9 @@ const props = withDefaults(
     primaryLinks: SidebarLink[]
     secondaryLinks: SidebarLink[]
     variant?: 'mentor' | 'trainee'
+    displayMode?: 'docked' | 'drawer'
   }>(),
-  { variant: 'mentor' },
+  { variant: 'mentor', displayMode: 'docked' },
 )
 
 const emit = defineEmits<{
@@ -50,7 +51,7 @@ function initials(email: string | undefined): string {
 </script>
 
 <template>
-  <aside class="sidebar" :class="`sidebar--${props.variant}`">
+  <aside class="sidebar" :class="[`sidebar--${props.variant}`, `sidebar--${props.displayMode}`]">
     <div class="sidebar-top">
       <div class="brand-wrap">
         <span class="brand-logo" aria-hidden="true">
@@ -358,7 +359,7 @@ function initials(email: string | undefined): string {
 }
 
 @media (max-width: 900px) {
-  .sidebar {
+  .sidebar--docked {
     border-right: 0;
     border-bottom: 1px solid var(--ui-border-soft);
     min-height: auto;

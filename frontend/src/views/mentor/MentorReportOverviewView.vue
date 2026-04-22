@@ -11,6 +11,7 @@ import ProgressSpinner from 'primevue/progressspinner'
 import Tag from 'primevue/tag'
 import { ApiError } from '../../api/client'
 import * as mentorApi from '../../api/modules/mentor'
+import { useMediaQuery } from '../../composables/useMediaQuery'
 import type { AssignmentResponse, DailyReportResponse, TraineeResponse, WeeklySummaryResponse } from '../../api/types'
 import PageHeader from '../../components/layout/PageHeader.vue'
 
@@ -33,12 +34,15 @@ const detailError = ref('')
 const activeAssignment = ref<AssignmentResponse | null>(null)
 const weeklySummaries = ref<WeeklySummaryResponse[]>([])
 const selectedWeekStart = ref('')
+const expandedWhatDoneIds = ref<number[]>([])
 
 let detailRequestVersion = 0
 let dailyRequestVersion = 0
 
 const selectedTrainee = computed(() => trainees.value.find((item) => item.id === selectedTraineeId.value) ?? null)
 const hasSelectedTrainee = computed(() => selectedTrainee.value != null)
+const hasSearchQuery = computed(() => query.value.trim().length > 0)
+const isMobileTable = useMediaQuery('(max-width: 900px)')
 const sortedWeeklySummaries = computed(() =>
   [...weeklySummaries.value].sort((a, b) => b.weekStart.localeCompare(a.weekStart)),
 )
@@ -232,6 +236,26 @@ function closeDailyDetail(): void {
   dailyDetailItem.value = null
 }
 
+function resolvedWhatDone(item: DailyReportResponse): string {
+  return item.whatDone?.trim() || 'No update.'
+}
+
+function shouldShowWhatDoneToggle(item: DailyReportResponse): boolean {
+  return resolvedWhatDone(item).length > 120
+}
+
+function isWhatDoneExpanded(reportId: number): boolean {
+  return expandedWhatDoneIds.value.includes(reportId)
+}
+
+function toggleWhatDone(reportId: number): void {
+  if (isWhatDoneExpanded(reportId)) {
+    expandedWhatDoneIds.value = expandedWhatDoneIds.value.filter((id) => id !== reportId)
+    return
+  }
+  expandedWhatDoneIds.value = [...expandedWhatDoneIds.value, reportId]
+}
+
 onMounted(async () => {
   await loadTrainees()
 })
@@ -256,6 +280,11 @@ watch([reportMode, dailyRangePreset, () => activeAssignment.value?.id, selectedT
     void loadDailyReports()
   }
 })
+
+watch(dailyReports, (items) => {
+  const validIds = new Set(items.map((item) => item.id))
+  expandedWhatDoneIds.value = expandedWhatDoneIds.value.filter((id) => validIds.has(id))
+})
 </script>
 
 <template>
@@ -271,16 +300,22 @@ watch([reportMode, dailyRangePreset, () => activeAssignment.value?.id, selectedT
       <aside class="trainee-panel card-shell">
         <div class="panel-head">
           <h3>Active trainees</h3>
-          <Button label="Reload" icon="pi pi-refresh" text size="small" :loading="traineesLoading" @click="loadTrainees" />
         </div>
 
         <div class="panel-tools">
           <IconField class="search-field">
             <InputIcon class="pi pi-search" />
             <InputText v-model="query" placeholder="Search name or email" @keyup.enter="searchTrainees" />
+            <button
+              v-if="hasSearchQuery"
+              type="button"
+              class="clear-query-btn"
+              aria-label="Clear search"
+              @click="clearSearch"
+            >
+              <i class="pi pi-times" />
+            </button>
           </IconField>
-          <Button icon="pi pi-search" label="Search" severity="secondary" outlined size="small" @click="searchTrainees" />
-          <Button icon="pi pi-times" label="Clear" severity="secondary" text size="small" @click="clearSearch" />
         </div>
 
         <Message v-if="traineesError" severity="error" :closable="false">{{ traineesError }}</Message>
@@ -440,7 +475,7 @@ watch([reportMode, dailyRangePreset, () => activeAssignment.value?.id, selectedT
               <p v-if="dailyLoading" class="muted small">Loading daily reports...</p>
               <Message v-else-if="dailyError" severity="error" :closable="false">{{ dailyError }}</Message>
               <p v-else-if="dailyReports.length === 0" class="muted small">No daily reports found for this range.</p>
-              <ul v-else class="daily-list">
+              <ul v-else-if="!isMobileTable" class="daily-list">
                 <li v-for="item in dailyReports" :key="item.id" class="daily-row">
                   <div class="daily-row-head">
                     <strong>{{ item.reportDate }}</strong>
@@ -449,10 +484,45 @@ watch([reportMode, dailyRangePreset, () => activeAssignment.value?.id, selectedT
                       <Button label="View details" size="small" text @click="openDailyDetail(item)" />
                     </div>
                   </div>
-                  <p class="weekly-meta">
-                    {{ item.fresherLabel }} · Day {{ item.trainingDayIndex }}
+                  <p class="daily-row-meta">
+                    <span class="daily-meta-chip">{{ item.fresherLabel }} · Day {{ item.trainingDayIndex }}</span>
                   </p>
-                  <p class="daily-text">{{ item.whatDone || 'No update.' }}</p>
+                  <p class="daily-text" :class="{ 'daily-text--expanded': isWhatDoneExpanded(item.id) }">
+                    {{ resolvedWhatDone(item) }}
+                  </p>
+                  <button
+                    v-if="shouldShowWhatDoneToggle(item)"
+                    type="button"
+                    class="daily-text-toggle"
+                    @click="toggleWhatDone(item.id)"
+                  >
+                    {{ isWhatDoneExpanded(item.id) ? 'See less' : 'See more' }}
+                  </button>
+                </li>
+              </ul>
+              <ul v-else class="mobile-daily-list">
+                <li v-for="item in dailyReports" :key="item.id" class="mobile-daily-card">
+                  <div class="mobile-daily-head">
+                    <strong>{{ item.reportDate }}</strong>
+                    <Tag :value="item.status" :severity="item.status === 'SUBMITTED' ? 'info' : 'secondary'" rounded />
+                  </div>
+                  <p class="mobile-daily-meta">
+                    <span class="daily-meta-chip">{{ item.fresherLabel }} · Training day {{ item.trainingDayIndex }}</span>
+                  </p>
+                  <p class="mobile-daily-text" :class="{ 'mobile-daily-text--expanded': isWhatDoneExpanded(item.id) }">
+                    {{ resolvedWhatDone(item) }}
+                  </p>
+                  <button
+                    v-if="shouldShowWhatDoneToggle(item)"
+                    type="button"
+                    class="daily-text-toggle"
+                    @click="toggleWhatDone(item.id)"
+                  >
+                    {{ isWhatDoneExpanded(item.id) ? 'See less' : 'See more' }}
+                  </button>
+                  <div class="mobile-daily-actions">
+                    <Button label="View details" size="small" text @click="openDailyDetail(item)" />
+                  </div>
                 </li>
               </ul>
             </article>
@@ -598,14 +668,44 @@ watch([reportMode, dailyRangePreset, () => activeAssignment.value?.id, selectedT
 }
 
 .panel-tools {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  gap: 0.45rem;
+  display: block;
   margin-bottom: 0.65rem;
 }
 
 .search-field {
+  position: relative;
   width: 100%;
+}
+
+.search-field :deep(.p-inputtext) {
+  padding-right: 2rem;
+}
+
+.clear-query-btn {
+  position: absolute;
+  top: 50%;
+  right: 0.55rem;
+  transform: translateY(-50%);
+  border: 0;
+  background: transparent;
+  color: var(--ui-text-secondary);
+  padding: 0;
+  width: 1.1rem;
+  height: 1.1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.clear-query-btn:hover {
+  color: var(--ui-text-primary);
+}
+
+.clear-query-btn:focus-visible {
+  outline: 2px solid var(--ui-focus-ring);
+  outline-offset: 2px;
+  border-radius: 999px;
 }
 
 .trainee-list {
@@ -761,6 +861,7 @@ watch([reportMode, dailyRangePreset, () => activeAssignment.value?.id, selectedT
 
 .report-mode-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   margin-bottom: 0.7rem;
 }
@@ -798,6 +899,7 @@ watch([reportMode, dailyRangePreset, () => activeAssignment.value?.id, selectedT
 
 .daily-presets {
   display: inline-flex;
+  flex-wrap: wrap;
   border: 1px solid var(--ui-border);
   border-radius: 8px;
   overflow: hidden;
@@ -813,6 +915,33 @@ watch([reportMode, dailyRangePreset, () => activeAssignment.value?.id, selectedT
   color: var(--ui-accent-2);
 }
 
+@media (max-width: 1280px) {
+  .report-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .report-mode-tabs :deep(.p-button) {
+    flex: 1 1 9rem;
+  }
+
+  .daily-presets {
+    display: flex;
+    width: 100%;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    gap: 0.4rem;
+    overflow: visible;
+  }
+
+  .daily-presets :deep(.p-button) {
+    border-radius: 8px;
+    border: 1px solid var(--ui-border);
+    flex: 1 1 7.25rem;
+  }
+}
+
 .daily-list,
 .weekly-list {
   list-style: none;
@@ -821,6 +950,73 @@ watch([reportMode, dailyRangePreset, () => activeAssignment.value?.id, selectedT
   display: flex;
   flex-direction: column;
   gap: 0.45rem;
+}
+
+.mobile-daily-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.mobile-daily-card {
+  border: 1px solid color-mix(in srgb, var(--ui-accent-2) 24%, var(--ui-border));
+  border-radius: 10px;
+  padding: 0.62rem;
+  background: linear-gradient(135deg, #ffffff 0%, var(--ui-accent-2-soft) 100%);
+  box-shadow: var(--ui-shadow-xs);
+  position: relative;
+}
+
+.mobile-daily-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.62rem;
+  bottom: 0.62rem;
+  width: 3px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--ui-accent-2), var(--ui-coral));
+}
+
+.mobile-daily-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.mobile-daily-meta,
+.mobile-daily-text {
+  margin: 0.35rem 0 0;
+  color: var(--ui-text-primary);
+  font-size: 0.84rem;
+}
+
+.mobile-daily-text {
+  white-space: pre-wrap;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  line-clamp: 2;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  color: var(--ui-text-secondary);
+  line-height: 1.4;
+}
+
+.mobile-daily-text--expanded {
+  display: block;
+  line-clamp: unset;
+  -webkit-line-clamp: unset;
+  overflow: visible;
+}
+
+.mobile-daily-actions {
+  margin-top: 0.35rem;
+  display: flex;
+  justify-content: flex-end;
 }
 
 .weekly-row,
@@ -834,10 +1030,43 @@ watch([reportMode, dailyRangePreset, () => activeAssignment.value?.id, selectedT
     transform var(--ui-transition-fast);
 }
 
-.daily-row:hover,
+.weekly-row {
+  border: 1px solid var(--ui-border-soft);
+  border-radius: 8px;
+  padding: 0.5rem 0.55rem;
+  background: var(--ui-surface);
+  box-shadow: var(--ui-shadow-xs);
+  transition: border-color var(--ui-transition-fast), box-shadow var(--ui-transition-fast),
+    transform var(--ui-transition-fast);
+}
 .weekly-row:hover {
   transform: translateY(-1px);
   border-color: color-mix(in srgb, var(--ui-accent-2) 26%, var(--ui-border));
+  box-shadow: var(--ui-shadow-sm);
+}
+
+.daily-row {
+  border-color: color-mix(in srgb, var(--ui-accent-2) 24%, var(--ui-border));
+  border-radius: 10px;
+  padding: 0.62rem 0.68rem 0.66rem;
+  background: linear-gradient(135deg, #ffffff 0%, var(--ui-accent-2-soft) 100%);
+  position: relative;
+}
+
+.daily-row::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.62rem;
+  bottom: 0.62rem;
+  width: 3px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--ui-accent-2), var(--ui-coral));
+}
+
+.daily-row:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--ui-accent-2) 40%, var(--ui-border));
   box-shadow: var(--ui-shadow-sm);
 }
 
@@ -848,10 +1077,30 @@ watch([reportMode, dailyRangePreset, () => activeAssignment.value?.id, selectedT
   gap: 0.6rem;
 }
 
+.daily-row-head strong {
+  color: var(--ui-accent-deep);
+}
+
 .daily-row-actions {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
+}
+
+.daily-row-meta {
+  margin: 0.35rem 0 0;
+}
+
+.daily-meta-chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid color-mix(in srgb, var(--ui-accent-2) 34%, var(--ui-border));
+  border-radius: 999px;
+  padding: 0.16rem 0.5rem;
+  background: #ffffff;
+  color: var(--ui-accent-deep);
+  font-size: 0.76rem;
+  font-weight: 600;
 }
 
 .weekly-head {
@@ -873,6 +1122,35 @@ watch([reportMode, dailyRangePreset, () => activeAssignment.value?.id, selectedT
   color: var(--ui-text-primary);
   font-size: 0.86rem;
   line-height: 1.4;
+  white-space: pre-wrap;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  line-clamp: 2;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.daily-text--expanded {
+  display: block;
+  line-clamp: unset;
+  -webkit-line-clamp: unset;
+  overflow: visible;
+}
+
+.daily-text-toggle {
+  margin-top: 0.22rem;
+  border: 0;
+  background: transparent;
+  color: var(--ui-accent-2);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+
+.daily-text-toggle:hover {
+  color: var(--ui-accent-deep);
+  text-decoration: underline;
 }
 
 .daily-detail-body {
@@ -1073,10 +1351,6 @@ watch([reportMode, dailyRangePreset, () => activeAssignment.value?.id, selectedT
 
 @media (max-width: 1100px) {
   .reports-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .panel-tools {
     grid-template-columns: 1fr;
   }
 

@@ -17,6 +17,7 @@ import { useToast } from 'primevue/usetoast'
 import { ApiError } from '../../api/client'
 import * as mentorApi from '../../api/modules/mentor'
 import { useCurriculumWizard } from '../../composables/useCurriculumWizard'
+import { useMediaQuery } from '../../composables/useMediaQuery'
 import type { LearningMaterialResponse, TaskTemplateResponse } from '../../api/types'
 import PageHeader from '../../components/layout/PageHeader.vue'
 
@@ -71,6 +72,7 @@ const publishSubmitting = ref(false)
 const discardDialogVisible = ref(false)
 const discardSubmitting = ref(false)
 const bypassLeaveGuard = ref(false)
+const isMobileTable = useMediaQuery('(max-width: 900px)')
 
 const hasMaterials = computed(() => (detail.value?.materials.length ?? 0) > 0)
 const hasTemplates = computed(() => (detail.value?.taskTemplates.length ?? 0) > 0)
@@ -475,12 +477,13 @@ onMounted(async () => {
 
         <h3 class="sub-title">Uploaded</h3>
         <DataTable
+          v-if="!isMobileTable"
           :value="detail?.materials ?? []"
           data-key="id"
-          class="p-datatable-sm"
+          class="p-datatable-sm wizard-table"
           responsive-layout="scroll"
         >
-          <Column field="sortOrder" header="#" style="width: 4rem" />
+          <Column field="sortOrder" header="#" style="width: 4rem" header-class="mobile-hidden-col" body-class="mobile-hidden-col" />
           <Column field="fileName" header="File" />
           <Column header-style="width: 5rem">
             <template #body="{ data }">
@@ -488,6 +491,16 @@ onMounted(async () => {
             </template>
           </Column>
         </DataTable>
+        <ul v-else-if="(detail?.materials?.length ?? 0) > 0" class="mobile-card-list">
+          <li v-for="item in detail?.materials ?? []" :key="item.id" class="mobile-card">
+            <p class="mobile-card-title">{{ item.fileName }}</p>
+            <p class="mobile-card-meta">Order: {{ item.sortOrder }}</p>
+            <div class="mobile-card-actions">
+              <Button icon="pi pi-trash" label="Delete" text severity="danger" @click="askDeleteMaterial(item)" />
+            </div>
+          </li>
+        </ul>
+        <p v-else class="muted">No uploaded materials yet.</p>
 
         <div class="step-actions spread">
           <Button label="Back" icon="pi pi-arrow-left" severity="secondary" outlined @click="goBack" />
@@ -502,9 +515,10 @@ onMounted(async () => {
           <Button label="Add template" icon="pi pi-plus" @click="openCreateTemplate" />
         </div>
         <DataTable
+          v-if="!isMobileTable"
           :value="detail?.taskTemplates ?? []"
           data-key="id"
-          class="p-datatable-sm"
+          class="p-datatable-sm wizard-table"
           responsive-layout="scroll"
         >
           <Column field="title" header="Title" />
@@ -513,8 +527,8 @@ onMounted(async () => {
               {{ data.estimatedDays ?? '-' }}
             </template>
           </Column>
-          <Column field="sortOrder" header="Order" style="width: 6rem" />
-          <Column header="Material">
+          <Column field="sortOrder" header="Order" style="width: 6rem" header-class="mobile-hidden-col" body-class="mobile-hidden-col" />
+          <Column header="Material" header-class="mobile-hidden-col" body-class="mobile-hidden-col">
             <template #body="{ data }">
               {{ mapMaterialName(data.learningMaterialId) }}
             </template>
@@ -526,6 +540,19 @@ onMounted(async () => {
             </template>
           </Column>
         </DataTable>
+        <ul v-else-if="(detail?.taskTemplates?.length ?? 0) > 0" class="mobile-card-list">
+          <li v-for="item in detail?.taskTemplates ?? []" :key="item.id" class="mobile-card">
+            <p class="mobile-card-title">{{ item.title }}</p>
+            <p class="mobile-card-meta">Estimate: {{ item.estimatedDays ?? '-' }} day(s)</p>
+            <p class="mobile-card-meta">Order: {{ item.sortOrder }}</p>
+            <p class="mobile-card-meta">Material: {{ mapMaterialName(item.learningMaterialId) }}</p>
+            <div class="mobile-card-actions">
+              <Button icon="pi pi-pencil" label="Edit" text @click="openEditTemplate(item)" />
+              <Button icon="pi pi-trash" label="Delete" text severity="danger" @click="askDeleteTemplate(item)" />
+            </div>
+          </li>
+        </ul>
+        <p v-else class="muted">No task templates yet.</p>
 
         <div class="step-actions spread">
           <Button label="Back" icon="pi pi-arrow-left" severity="secondary" outlined @click="goBack" />
@@ -565,7 +592,12 @@ onMounted(async () => {
       </section>
     </template>
 
-    <Dialog v-model:visible="materialDeleteVisible" modal header="Remove material" :style="{ width: '26rem' }">
+    <Dialog
+      v-model:visible="materialDeleteVisible"
+      modal
+      header="Remove material"
+      :style="{ width: 'min(26rem, 92vw)' }"
+    >
       <p>Remove <strong>{{ materialToDelete?.fileName }}</strong> from this draft?</p>
       <template #footer>
         <Button label="Cancel" text @click="materialDeleteVisible = false" />
@@ -577,7 +609,7 @@ onMounted(async () => {
       v-model:visible="templateDialogVisible"
       modal
       :header="templateMode === 'create' ? 'Add task template' : 'Edit task template'"
-      :style="{ width: '34rem' }"
+      :style="{ width: 'min(34rem, 92vw)' }"
     >
       <div class="dialog-form">
         <label>
@@ -619,7 +651,12 @@ onMounted(async () => {
       </template>
     </Dialog>
 
-    <Dialog v-model:visible="templateDeleteVisible" modal header="Remove template" :style="{ width: '26rem' }">
+    <Dialog
+      v-model:visible="templateDeleteVisible"
+      modal
+      header="Remove template"
+      :style="{ width: 'min(26rem, 92vw)' }"
+    >
       <p>Remove <strong>{{ templateToDelete?.title }}</strong>?</p>
       <template #footer>
         <Button label="Cancel" text @click="templateDeleteVisible = false" />
@@ -627,7 +664,12 @@ onMounted(async () => {
       </template>
     </Dialog>
 
-    <Dialog v-model:visible="discardDialogVisible" modal header="Discard draft" :style="{ width: '28rem' }">
+    <Dialog
+      v-model:visible="discardDialogVisible"
+      modal
+      header="Discard draft"
+      :style="{ width: 'min(28rem, 92vw)' }"
+    >
       <p>
         This will permanently delete this unpublished draft, including uploaded materials and task templates. Continue?
       </p>
@@ -781,7 +823,46 @@ onMounted(async () => {
   gap: 0.75rem;
 }
 
+.mobile-card-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.mobile-card {
+  border: 1px solid var(--ui-border-soft);
+  border-radius: 10px;
+  background: var(--ui-surface);
+  padding: 0.65rem;
+}
+
+.mobile-card-title {
+  margin: 0;
+  font-weight: 600;
+  color: var(--ui-text-primary);
+}
+
+.mobile-card-meta {
+  margin: 0.35rem 0 0;
+  font-size: 0.84rem;
+  color: var(--ui-text-secondary);
+}
+
+.mobile-card-actions {
+  margin-top: 0.55rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
 @media (max-width: 900px) {
+  :deep(.wizard-table .mobile-hidden-col) {
+    display: none;
+  }
+
   .form-grid {
     grid-template-columns: 1fr;
   }

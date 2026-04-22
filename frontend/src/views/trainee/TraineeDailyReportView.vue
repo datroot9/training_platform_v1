@@ -2,7 +2,6 @@
 import { computed, ref, watch } from 'vue'
 import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
-import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
 import Message from 'primevue/message'
 import ProgressSpinner from 'primevue/progressspinner'
@@ -81,31 +80,57 @@ interface DeadlineAlert {
   detail: string
 }
 
+function parseIsoDateParts(value: string): { year: number; month: number; day: number } | null {
+  const datePart = value.slice(0, 10)
+  const [year, month, day] = datePart.split('-').map((part) => Number(part))
+  if (!year || !month || !day) return null
+  return { year, month, day }
+}
+
+function formatDateParts(parts: { year: number; month: number; day: number }): string {
+  const month = String(parts.month).padStart(2, '0')
+  const day = String(parts.day).padStart(2, '0')
+  return `${parts.year}-${month}-${day}`
+}
+
 const deadlineAlert = computed<DeadlineAlert>(() => {
-  const raw = assignment.value?.endedAt?.trim()
-  if (!raw) {
-    return {
-      tone: 'secondary',
-      title: 'No final deadline set',
-      detail: 'Mentor has not set assignment end date yet.',
-    }
+  const endedAtRaw = assignment.value?.endedAt?.trim() ?? ''
+  const endedAtParts = endedAtRaw ? parseIsoDateParts(endedAtRaw) : null
+  const estimatedDays = assignment.value?.totalEstimatedDays
+  const assignedAtRaw = assignment.value?.assignedAt?.trim() ?? ''
+  const assignedAtParts = assignedAtRaw ? parseIsoDateParts(assignedAtRaw) : null
+
+  let deadlineLabel = ''
+  let deadlineEndOfDay: Date | null = null
+
+  if (endedAtParts) {
+    deadlineLabel = `Assignment end: ${formatDateParts(endedAtParts)}`
+    deadlineEndOfDay = new Date(endedAtParts.year, endedAtParts.month - 1, endedAtParts.day, 23, 59, 59, 999)
+  } else if (assignedAtParts && typeof estimatedDays === 'number' && Number.isFinite(estimatedDays) && estimatedDays > 0) {
+    const estimatedEnd = new Date(assignedAtParts.year, assignedAtParts.month - 1, assignedAtParts.day)
+    estimatedEnd.setDate(estimatedEnd.getDate() + Math.trunc(estimatedDays))
+    deadlineLabel = `Estimated end: ${toIsoDate(estimatedEnd)}`
+    deadlineEndOfDay = new Date(
+      estimatedEnd.getFullYear(),
+      estimatedEnd.getMonth(),
+      estimatedEnd.getDate(),
+      23,
+      59,
+      59,
+      999,
+    )
   }
 
-  const deadlineDatePart = raw.slice(0, 10)
-  const [year, month, day] = deadlineDatePart.split('-').map((part) => Number(part))
-  if (!year || !month || !day) {
+  if (!deadlineEndOfDay) {
     return {
       tone: 'secondary',
-      title: 'Deadline unavailable',
-      detail: 'Could not parse assignment deadline from server.',
+      title: 'No deadline configured',
+      detail: 'Set assignment estimate to enable an expected finish date.',
     }
   }
-
-  const deadlineEndOfDay = new Date(year, month - 1, day, 23, 59, 59, 999)
   const now = new Date()
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
   const daysLeft = Math.floor((deadlineEndOfDay.getTime() - todayStart.getTime()) / (24 * 60 * 60 * 1000))
-  const deadlineLabel = `Assignment end: ${deadlineDatePart}`
 
   if (daysLeft < 0) {
     const overdueDays = Math.abs(daysLeft)
@@ -152,11 +177,33 @@ function pickReportDate(date: string): void {
   mode.value = 'edit'
 }
 
+function nextTrainingDayForDate(date: string): number {
+  const previous = [...weekReports.value]
+    .filter((item) => item.reportDate < date)
+    .sort((a, b) => a.reportDate.localeCompare(b.reportDate))
+    .at(-1)
+  const baseDay = previous?.trainingDayIndex
+  if (typeof baseDay !== 'number' || !Number.isFinite(baseDay) || baseDay < 1) {
+    return 1
+  }
+  return Math.trunc(baseDay) + 1
+}
+
+function trainingDayLabel(value: number | null | undefined): string {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 1) {
+    return 'Training day -'
+  }
+  return `Training day ${Math.trunc(value)}`
+}
+
 function createTodayReport(): void {
   const todayReport = weekReports.value.find((item) => item.reportDate === todayIso.value)
   selectedDate.value = parseIsoDate(todayIso.value)
   editingReportDate.value = todayIso.value
   mode.value = todayReport ? 'edit' : 'create'
+  if (!todayReport) {
+    trainingDayIndex.value = nextTrainingDayForDate(todayIso.value)
+  }
 }
 
 function setResourceField(index: number, field: 'type' | 'label' | 'url', value: string): void {
@@ -259,14 +306,6 @@ watch(
           Week start
           <input type="date" :value="weekStartModel" @change="updateWeekStart(($event.target as HTMLInputElement).value)" />
         </label>
-        <Button
-          label="Reload"
-          icon="pi pi-refresh"
-          text
-          size="small"
-          :loading="loading"
-          @click="loadWeek"
-        />
         <section class="focus-card">
           <div class="focus-card-head">
             <h4>Current focus</h4>
@@ -305,7 +344,7 @@ watch(
               <strong>{{ item.reportDate }}</strong>
               <Tag :value="item.status" :severity="item.status === 'SUBMITTED' ? 'info' : 'secondary'" rounded />
             </div>
-            <p>{{ item.whatDone || 'No details yet' }}</p>
+            <p>{{ trainingDayLabel(item.trainingDayIndex) }}</p>
           </button>
         </section>
 
@@ -324,7 +363,7 @@ watch(
               <strong>{{ item.reportDate }}</strong>
               <Tag :value="item.status" :severity="item.status === 'SUBMITTED' ? 'info' : 'secondary'" rounded />
             </div>
-            <p>{{ item.whatDone || 'No details yet' }}</p>
+            <p>{{ trainingDayLabel(item.trainingDayIndex) }}</p>
           </button>
         </section>
       </aside>
@@ -365,11 +404,13 @@ watch(
             </label>
             <label>
               Training day
-              <InputNumber
-                :model-value="trainingDayIndex"
+              <input
+                :value="trainingDayIndex ?? ''"
+                type="number"
                 :min="1"
+                step="1"
                 :disabled="!canEdit || submitting"
-                @update:model-value="trainingDayIndex = $event as number | null"
+                @input="trainingDayIndex = Number(($event.target as HTMLInputElement).value) || null"
               />
             </label>
             <label class="full">
@@ -566,7 +607,8 @@ watch(
   font-size: 0.85rem;
 }
 
-.field input[type='date'] {
+.field input[type='date'],
+.form-grid input[type='number'] {
   border: 1px solid var(--ui-border);
   border-radius: 8px;
   padding: 0.35rem 0.45rem;

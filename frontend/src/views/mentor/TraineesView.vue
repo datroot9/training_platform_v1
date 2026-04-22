@@ -22,6 +22,7 @@ import { useToast } from 'primevue/usetoast'
 import type { MenuItem } from 'primevue/menuitem'
 import { ApiError } from '../../api/client'
 import * as mentorApi from '../../api/modules/mentor'
+import { useMediaQuery } from '../../composables/useMediaQuery'
 import type {
   AssignmentResponse,
   AssignmentTaskResponse,
@@ -56,6 +57,7 @@ const first = ref(0)
 const pageRows = ref(8)
 const actionMenu = ref()
 const actionMenuItems = ref<MenuItem[]>([])
+const isMobileTable = useMediaQuery('(max-width: 900px)')
 
 const progressDialogVisible = ref(false)
 const progressTrainee = ref<TraineeResponse | null>(null)
@@ -544,6 +546,7 @@ function onPageChange(event: { first: number; rows: number }): void {
       <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
 
       <DataTable
+        v-if="!isMobileTable"
         :value="rows"
         data-key="id"
         :loading="loading"
@@ -583,13 +586,13 @@ function onPageChange(event: { first: number; rows: number }): void {
           </template>
         </Column>
 
-        <Column header="Last active" style="min-width: 9rem">
+        <Column header="Last active" style="min-width: 9rem" header-class="mobile-hidden-col" body-class="mobile-hidden-col">
           <template #body="{ data }">
             {{ formatDate(data.createdAt) }}
           </template>
         </Column>
 
-        <Column header="Date added" style="min-width: 9rem">
+        <Column header="Date added" style="min-width: 9rem" header-class="mobile-hidden-col" body-class="mobile-hidden-col">
           <template #body="{ data }">
             {{ formatDate(data.createdAt) }}
           </template>
@@ -608,6 +611,40 @@ function onPageChange(event: { first: number; rows: number }): void {
           </template>
         </Column>
       </DataTable>
+      <ul v-else-if="rows.length > 0" class="mobile-roster-list">
+        <li v-for="row in rows" :key="row.id" class="mobile-roster-card">
+          <div class="mobile-roster-head">
+            <div class="user-cell">
+              <Avatar :label="initials(row.fullName)" shape="circle" />
+              <div>
+                <p class="name">{{ row.fullName }}</p>
+                <p class="email">{{ row.email }}</p>
+              </div>
+            </div>
+            <Tag :value="row.active ? 'Active' : 'Inactive'" :severity="row.active ? 'success' : 'danger'" rounded />
+          </div>
+          <p class="mobile-roster-meta">
+            {{ row.activeCurriculumName ?? 'No active assignment' }}
+          </p>
+          <p class="mobile-roster-meta">
+            {{ row.completedTaskCount ?? 0 }} / {{ row.totalTaskCount ?? 0 }} tasks
+          </p>
+          <p class="mobile-roster-meta">Joined {{ formatDate(row.createdAt) }}</p>
+          <div class="mobile-roster-actions">
+            <Button label="Progress" size="small" text @click="void openProgressDialog(row)" />
+            <Button label="Assign" size="small" text @click="void openAssignDialog(row)" />
+            <Button label="Reset pass" size="small" text @click="void resetPassword(row)" />
+            <Button
+              :label="row.active ? 'Deactivate' : 'Activate'"
+              size="small"
+              text
+              :severity="row.active ? 'warn' : 'success'"
+              @click="void toggleActive(row)"
+            />
+          </div>
+        </li>
+      </ul>
+      <p v-else class="muted small">No trainees found for current filters.</p>
 
       <div class="table-footer">
         <Paginator
@@ -625,7 +662,7 @@ function onPageChange(event: { first: number; rows: number }): void {
       v-model:visible="createDialogVisible"
       modal
       header="Add trainee"
-      :style="{ width: '28rem' }"
+      :style="{ width: 'min(28rem, 92vw)' }"
       class="modern-dialog"
     >
       <div class="dialog-fields">
@@ -648,7 +685,7 @@ function onPageChange(event: { first: number; rows: number }): void {
       v-model:visible="assignDialogVisible"
       modal
       header="Assign curriculum"
-      :style="{ width: '32rem' }"
+      :style="{ width: 'min(32rem, 92vw)' }"
       class="modern-dialog"
     >
       <div class="dialog-fields">
@@ -698,7 +735,7 @@ function onPageChange(event: { first: number; rows: number }): void {
       v-model:visible="progressDialogVisible"
       modal
       :header="progressTrainee ? `Progress · ${progressTrainee.fullName}` : 'Progress'"
-      :style="{ width: 'min(40rem, 95vw)' }"
+      :style="{ width: 'min(40rem, 92vw)' }"
       class="modern-dialog progress-dialog"
       @hide="closeProgressDialog"
     >
@@ -917,6 +954,43 @@ function onPageChange(event: { first: number; rows: number }): void {
   margin-top: 0.8rem;
   display: flex;
   justify-content: flex-end;
+}
+
+.mobile-roster-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.mobile-roster-card {
+  border: 1px solid var(--ui-border-soft);
+  border-radius: 10px;
+  background: var(--ui-surface);
+  box-shadow: var(--ui-shadow-xs);
+  padding: 0.65rem;
+}
+
+.mobile-roster-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+  align-items: flex-start;
+}
+
+.mobile-roster-meta {
+  margin: 0.4rem 0 0;
+  color: var(--ui-text-secondary);
+  font-size: 0.84rem;
+}
+
+.mobile-roster-actions {
+  margin-top: 0.55rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
 }
 
 .user-cell {
@@ -1213,6 +1287,10 @@ function onPageChange(event: { first: number; rows: number }): void {
 }
 
 @media (max-width: 900px) {
+  :deep(.trainees-table .mobile-hidden-col) {
+    display: none;
+  }
+
   .table-top {
     grid-template-columns: minmax(0, 1fr);
     align-items: stretch;

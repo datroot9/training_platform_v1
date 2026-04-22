@@ -26,6 +26,7 @@ import type {
   TaskTemplateResponse,
 } from '../../api/types'
 import PageHeader from '../../components/layout/PageHeader.vue'
+import { useMediaQuery } from '../../composables/useMediaQuery'
 
 const route = useRoute()
 const router = useRouter()
@@ -65,6 +66,7 @@ const publishDialogVisible = ref(false)
 const publishSubmitting = ref(false)
 const deleteDraftDialogVisible = ref(false)
 const deleteDraftSubmitting = ref(false)
+const isMobileTable = useMediaQuery('(max-width: 900px)')
 
 const newVersionDialogVisible = ref(false)
 const newVersionLabel = ref('')
@@ -540,10 +542,16 @@ async function confirmCreateNewVersion(): Promise<void> {
               />
             </div>
 
-            <DataTable :value="detail.materials" data-key="id" responsive-layout="scroll" class="p-datatable-sm">
+            <DataTable
+              v-if="!isMobileTable"
+              :value="detail.materials"
+              data-key="id"
+              responsive-layout="scroll"
+              class="p-datatable-sm detail-table"
+            >
               <Column field="fileName" header="File name" style="min-width: 18rem" />
-              <Column field="sortOrder" header="Sort order" style="width: 8rem" />
-              <Column header="Uploaded" style="width: 12rem">
+              <Column field="sortOrder" header="Sort order" style="width: 8rem" header-class="mobile-hidden-col" body-class="mobile-hidden-col" />
+              <Column header="Uploaded" style="width: 12rem" header-class="mobile-hidden-col" body-class="mobile-hidden-col">
                 <template #body="{ data }">
                   {{ formatDate(data.createdAt) }}
                 </template>
@@ -560,6 +568,17 @@ async function confirmCreateNewVersion(): Promise<void> {
                 </template>
               </Column>
             </DataTable>
+            <ul v-else-if="detail.materials.length > 0" class="mobile-card-list">
+              <li v-for="item in detail.materials" :key="item.id" class="mobile-card">
+                <p class="mobile-card-title">{{ item.fileName }}</p>
+                <p class="mobile-card-meta">Sort order: {{ item.sortOrder }}</p>
+                <p class="mobile-card-meta">Uploaded: {{ formatDate(item.createdAt) }}</p>
+                <div class="mobile-card-actions">
+                  <Button icon="pi pi-trash" label="Delete" text severity="danger" :disabled="isPublished" @click="askDeleteMaterial(item)" />
+                </div>
+              </li>
+            </ul>
+            <p v-else class="muted">No materials yet.</p>
             </section>
           </TabPanel>
 
@@ -574,15 +593,21 @@ async function confirmCreateNewVersion(): Promise<void> {
               />
             </div>
 
-            <DataTable :value="detail.taskTemplates" data-key="id" responsive-layout="scroll" class="p-datatable-sm">
+            <DataTable
+              v-if="!isMobileTable"
+              :value="detail.taskTemplates"
+              data-key="id"
+              responsive-layout="scroll"
+              class="p-datatable-sm detail-table"
+            >
               <Column field="title" header="Title" style="min-width: 14rem" />
               <Column header="Estimate (days)" style="width: 9rem">
                 <template #body="{ data }">
                   {{ data.estimatedDays ?? '-' }}
                 </template>
               </Column>
-              <Column field="sortOrder" header="Sort order" style="width: 8rem" />
-              <Column header="Material link" style="min-width: 12rem">
+              <Column field="sortOrder" header="Sort order" style="width: 8rem" header-class="mobile-hidden-col" body-class="mobile-hidden-col" />
+              <Column header="Material link" style="min-width: 12rem" header-class="mobile-hidden-col" body-class="mobile-hidden-col">
                 <template #body="{ data }">
                   {{ mapMaterialName(data.learningMaterialId) }}
                 </template>
@@ -602,6 +627,19 @@ async function confirmCreateNewVersion(): Promise<void> {
                 </template>
               </Column>
             </DataTable>
+            <ul v-else-if="detail.taskTemplates.length > 0" class="mobile-card-list">
+              <li v-for="item in detail.taskTemplates" :key="item.id" class="mobile-card">
+                <p class="mobile-card-title">{{ item.title }}</p>
+                <p class="mobile-card-meta">Estimate: {{ item.estimatedDays ?? '-' }} day(s)</p>
+                <p class="mobile-card-meta">Order: {{ item.sortOrder }}</p>
+                <p class="mobile-card-meta">Material: {{ mapMaterialName(item.learningMaterialId) }}</p>
+                <div class="mobile-card-actions">
+                  <Button icon="pi pi-pencil" label="Edit" text :disabled="isPublished" @click="openEditTemplate(item)" />
+                  <Button icon="pi pi-trash" label="Delete" text severity="danger" :disabled="isPublished" @click="askDeleteTemplate(item)" />
+                </div>
+              </li>
+            </ul>
+            <p v-else class="muted">No templates yet.</p>
             </section>
           </TabPanel>
 
@@ -653,7 +691,7 @@ async function confirmCreateNewVersion(): Promise<void> {
     v-model:visible="materialDeleteDialogVisible"
     modal
     header="Delete material"
-    :style="{ width: '28rem' }"
+    :style="{ width: 'min(28rem, 92vw)' }"
   >
     <p>Delete <strong>{{ materialToDelete?.fileName }}</strong> from this curriculum?</p>
     <template #footer>
@@ -666,7 +704,7 @@ async function confirmCreateNewVersion(): Promise<void> {
     v-model:visible="templateDialogVisible"
     modal
     :header="templateMode === 'create' ? 'Add task template' : 'Edit task template'"
-    :style="{ width: '34rem' }"
+    :style="{ width: 'min(34rem, 92vw)' }"
   >
     <div class="dialog-form">
       <label>
@@ -712,7 +750,7 @@ async function confirmCreateNewVersion(): Promise<void> {
     v-model:visible="templateDeleteDialogVisible"
     modal
     header="Delete template"
-    :style="{ width: '28rem' }"
+    :style="{ width: 'min(28rem, 92vw)' }"
   >
     <p>Delete <strong>{{ templateToDelete?.title }}</strong> from this curriculum?</p>
     <template #footer>
@@ -721,7 +759,12 @@ async function confirmCreateNewVersion(): Promise<void> {
     </template>
   </Dialog>
 
-  <Dialog v-model:visible="publishDialogVisible" modal header="Publish curriculum" :style="{ width: '30rem' }">
+  <Dialog
+    v-model:visible="publishDialogVisible"
+    modal
+    header="Publish curriculum"
+    :style="{ width: 'min(30rem, 92vw)' }"
+  >
     <p>
       Publish this curriculum now? After publishing, materials and templates are locked for editing.
     </p>
@@ -741,7 +784,7 @@ async function confirmCreateNewVersion(): Promise<void> {
     v-model:visible="deleteDraftDialogVisible"
     modal
     header="Delete draft"
-    :style="{ width: '30rem' }"
+    :style="{ width: 'min(30rem, 92vw)' }"
   >
     <p>
       Delete this draft curriculum now? This action cannot be undone.
@@ -762,7 +805,7 @@ async function confirmCreateNewVersion(): Promise<void> {
     v-model:visible="newVersionDialogVisible"
     modal
     header="Create new draft version"
-    :style="{ width: '32rem' }"
+    :style="{ width: 'min(32rem, 92vw)' }"
   >
     <div class="dialog-form">
       <label>
@@ -929,7 +972,46 @@ async function confirmCreateNewVersion(): Promise<void> {
   gap: 0.7rem;
 }
 
+.mobile-card-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.mobile-card {
+  border: 1px solid var(--ui-border-soft);
+  border-radius: 10px;
+  background: var(--ui-surface);
+  padding: 0.65rem;
+}
+
+.mobile-card-title {
+  margin: 0;
+  font-weight: 600;
+  color: var(--ui-text-primary);
+}
+
+.mobile-card-meta {
+  margin: 0.35rem 0 0;
+  font-size: 0.84rem;
+  color: var(--ui-text-secondary);
+}
+
+.mobile-card-actions {
+  margin-top: 0.55rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
 @media (max-width: 900px) {
+  :deep(.detail-table .mobile-hidden-col) {
+    display: none;
+  }
+
   .form-grid {
     grid-template-columns: 1fr;
   }
