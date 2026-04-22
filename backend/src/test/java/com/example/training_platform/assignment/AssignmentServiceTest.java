@@ -2,12 +2,18 @@ package com.example.training_platform.assignment;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.lenient;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -259,5 +265,217 @@ class AssignmentServiceTest {
 
         assertThat(result.id()).isEqualTo(200L);
         assertThat(result.status()).isEqualTo("IN_PROGRESS");
+    }
+
+    @Test
+    void assignCurriculumBlockedWhenTraineeNotOwnedByMentor() {
+        when(userDao.countTraineeByMentor(5L, 11L)).thenReturn(0L);
+
+        assertThatThrownBy(() -> assignmentService.assignCurriculum(5L, 11L, 22L))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void assignCurriculumBlockedWhenCurriculumNotPublished() {
+        CurriculumEntity curriculum = new CurriculumEntity();
+        curriculum.setId(22L);
+        curriculum.setName("Draft Curriculum");
+        curriculum.setStatus("DRAFT");
+        when(userDao.countTraineeByMentor(5L, 11L)).thenReturn(1L);
+        when(curriculumDao.selectByIdAndCreator(22L, 5L)).thenReturn(Optional.of(curriculum));
+
+        assertThatThrownBy(() -> assignmentService.assignCurriculum(5L, 11L, 22L))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void replaceActiveAssignmentBlockedWhenCancelUpdateReturnsZero() {
+        CurriculumEntity curriculum = new CurriculumEntity();
+        curriculum.setId(22L);
+        curriculum.setName("Published Curriculum");
+        curriculum.setStatus("PUBLISHED");
+        TraineeCurriculumAssignmentEntity active = new TraineeCurriculumAssignmentEntity();
+        active.setId(88L);
+        active.setStatus("ACTIVE");
+        when(userDao.countTraineeByMentor(5L, 11L)).thenReturn(1L);
+        when(curriculumDao.selectByIdAndCreator(22L, 5L)).thenReturn(Optional.of(curriculum));
+        when(assignmentDao.selectActiveByTrainee(11L)).thenReturn(Optional.of(active));
+        when(assignmentDao.update(active)).thenReturn(0);
+
+        assertThatThrownBy(() -> assignmentService.replaceActiveAssignment(5L, 11L, 22L))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void assignCurriculumGeneratesTasksFromTemplates() {
+        CurriculumEntity curriculum = new CurriculumEntity();
+        curriculum.setId(22L);
+        curriculum.setName("Published Curriculum");
+        curriculum.setStatus("PUBLISHED");
+        TaskTemplateEntity t1 = new TaskTemplateEntity();
+        t1.setId(1L);
+        t1.setTitle("Task 1");
+        t1.setDescription("Desc 1");
+        t1.setEstimatedDays(2);
+        TaskTemplateEntity t2 = new TaskTemplateEntity();
+        t2.setId(2L);
+        t2.setTitle("Task 2");
+        t2.setDescription("Desc 2");
+        t2.setEstimatedDays(3);
+
+        when(userDao.countTraineeByMentor(5L, 11L)).thenReturn(1L);
+        when(curriculumDao.selectByIdAndCreator(22L, 5L)).thenReturn(Optional.of(curriculum));
+        when(assignmentDao.countActiveByTrainee(11L)).thenReturn(0L);
+        when(taskTemplateDao.listByCurriculumId(22L)).thenReturn(List.of(t1, t2));
+        doAnswer(invocation -> {
+            TraineeCurriculumAssignmentEntity arg = invocation.getArgument(0);
+            arg.setId(100L);
+            return 1;
+        }).when(assignmentDao).insert(any(TraineeCurriculumAssignmentEntity.class));
+        when(assignmentDao.selectAssignmentProjectionByIdAndTrainee(100L, 11L)).thenReturn(Optional.empty());
+
+        assignmentService.assignCurriculum(5L, 11L, 22L);
+
+        verify(taskDao, times(2)).insert(any(TaskEntity.class));
+        verify(taskDao).insert(argThat(task ->
+                task.getAssignmentId().equals(100L)
+                        && task.getTaskTemplateId().equals(1L)
+                        && "Task 1".equals(task.getTitle())
+                        && "NOT_STARTED".equals(task.getStatus())
+        ));
+        verify(taskDao).insert(argThat(task ->
+                task.getAssignmentId().equals(100L)
+                        && task.getTaskTemplateId().equals(2L)
+                        && "Task 2".equals(task.getTitle())
+                        && "NOT_STARTED".equals(task.getStatus())
+        ));
+    }
+
+    @Test
+    void getActiveAssignmentBlockedWhenMissing() {
+        when(assignmentDao.selectActiveAssignmentProjectionByTrainee(11L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> assignmentService.getActiveAssignment(11L))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void getAssignmentTasksBlockedWhenAssignmentDoesNotBelongToTrainee() {
+        when(assignmentDao.countByIdAndTrainee(100L, 11L)).thenReturn(0L);
+
+        assertThatThrownBy(() -> assignmentService.getAssignmentTasks(11L, 100L))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void updateTaskStatusBlockedWhenStatusBlank() {
+        when(assignmentDao.countByIdAndTrainee(100L, 11L)).thenReturn(1L);
+
+        assertThatThrownBy(() -> assignmentService.updateTaskStatus(11L, 100L, 200L, "   "))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void updateTaskStatusTreatsLowercaseAsValidStatus() {
+        TaskEntity task = new TaskEntity();
+        task.setId(200L);
+        task.setAssignmentId(100L);
+        task.setStatus("NOT_STARTED");
+        AssignmentTaskProjection projection = new AssignmentTaskProjection();
+        projection.setId(200L);
+        projection.setAssignmentId(100L);
+        projection.setTaskTemplateId(12L);
+        projection.setSortOrder(1);
+        projection.setTitle("Task A");
+        projection.setStatus("IN_PROGRESS");
+        when(assignmentDao.countByIdAndTrainee(100L, 11L)).thenReturn(1L);
+        when(taskDao.selectByAssignmentAndTaskId(100L, 200L)).thenReturn(Optional.of(task));
+        when(taskDao.listAssignmentTasks(100L)).thenReturn(List.of(projection));
+
+        AssignmentTaskResponse result = assignmentService.updateTaskStatus(11L, 100L, 200L, "in_progress");
+
+        assertThat(result.status()).isEqualTo("IN_PROGRESS");
+    }
+
+    @Test
+    void updateTaskStatusSkipsUpdateWhenStatusUnchanged() {
+        TaskEntity task = new TaskEntity();
+        task.setId(200L);
+        task.setAssignmentId(100L);
+        task.setStatus("IN_PROGRESS");
+        AssignmentTaskProjection projection = new AssignmentTaskProjection();
+        projection.setId(200L);
+        projection.setAssignmentId(100L);
+        projection.setTaskTemplateId(12L);
+        projection.setSortOrder(1);
+        projection.setTitle("Task A");
+        projection.setStatus("IN_PROGRESS");
+        when(assignmentDao.countByIdAndTrainee(100L, 11L)).thenReturn(1L);
+        when(taskDao.selectByAssignmentAndTaskId(100L, 200L)).thenReturn(Optional.of(task));
+        when(taskDao.listAssignmentTasks(100L)).thenReturn(List.of(projection));
+
+        assignmentService.updateTaskStatus(11L, 100L, 200L, "IN_PROGRESS");
+
+        verify(taskDao, never()).update(any(TaskEntity.class));
+    }
+
+    @Test
+    void updateTaskStatusDoneToInProgressClearsCompletedAtAndKeepsStartedAt() {
+        LocalDateTime startedAt = LocalDateTime.now().minusHours(3);
+        LocalDateTime completedAt = LocalDateTime.now().minusMinutes(30);
+        TaskEntity task = new TaskEntity();
+        task.setId(200L);
+        task.setAssignmentId(100L);
+        task.setStatus("DONE");
+        task.setStartedAt(startedAt);
+        task.setCompletedAt(completedAt);
+        AssignmentTaskProjection projection = new AssignmentTaskProjection();
+        projection.setId(200L);
+        projection.setAssignmentId(100L);
+        projection.setTaskTemplateId(12L);
+        projection.setSortOrder(1);
+        projection.setTitle("Task A");
+        projection.setStatus("IN_PROGRESS");
+        when(assignmentDao.countByIdAndTrainee(100L, 11L)).thenReturn(1L);
+        when(taskDao.selectByAssignmentAndTaskId(100L, 200L)).thenReturn(Optional.of(task));
+        when(taskDao.listAssignmentTasks(100L)).thenReturn(List.of(projection));
+
+        assignmentService.updateTaskStatus(11L, 100L, 200L, "IN_PROGRESS");
+
+        verify(taskDao).update(argThat(updated ->
+                "IN_PROGRESS".equals(updated.getStatus())
+                        && startedAt.equals(updated.getStartedAt())
+                        && updated.getCompletedAt() == null
+        ));
+    }
+
+    @Test
+    void loadMaterialBlockedWhenStoragePathEscapesRoot() throws Exception {
+        Path outsideDir = tempDir.getParent().resolve("outside-materials");
+        Files.createDirectories(outsideDir);
+        Files.writeString(outsideDir.resolve("lesson.pdf"), "%PDF-1.4 test");
+
+        LearningMaterialEntity material = new LearningMaterialEntity();
+        material.setId(9L);
+        material.setFileName("lesson.pdf");
+        material.setStoragePath("../outside-materials/lesson.pdf");
+        when(learningMaterialDao.selectAccessibleByTraineeAndMaterialId(11L, 9L)).thenReturn(Optional.of(material));
+
+        assertThatThrownBy(() -> assignmentService.loadMaterialForTrainee(11L, 9L))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
     }
 }
