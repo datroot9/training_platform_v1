@@ -141,10 +141,17 @@ function onSidebarAction(action: string): void {
   padding: 1rem;
   max-width: none;
   margin: 0;
-  border: 1px solid var(--ui-border-soft);
+  border: 1px solid color-mix(in srgb, var(--ui-accent-2) 28%, var(--ui-border-soft));
   border-radius: var(--ui-radius-xl);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.86) 0%, rgba(238, 244, 255, 0.88) 54%, rgba(255, 244, 240, 0.86) 100%);
-  box-shadow: var(--ui-shadow-sm);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, #ffffff 82%, var(--ui-accent-soft-2)) 0%,
+    color-mix(in srgb, #ffffff 78%, var(--ui-accent-2-soft)) 52%,
+    color-mix(in srgb, #ffffff 82%, var(--ui-coral-soft)) 100%
+  );
+  box-shadow:
+    0 18px 36px -24px color-mix(in srgb, var(--ui-accent-2) 46%, transparent),
+    0 8px 20px rgba(36, 44, 70, 0.12);
   backdrop-filter: blur(2px);
 }
 

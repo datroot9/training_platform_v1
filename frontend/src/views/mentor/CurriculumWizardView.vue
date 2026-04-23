@@ -713,8 +713,12 @@ onMounted(async () => {
 }
 
 .card {
-  background: var(--ui-surface);
-  border: 1px solid var(--ui-border-soft);
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, #ffffff 84%, var(--ui-accent-soft-2)) 0%,
+    color-mix(in srgb, #ffffff 92%, var(--ui-accent-soft)) 100%
+  );
+  border: 1px solid color-mix(in srgb, var(--ui-accent-2) 26%, var(--ui-border-soft));
   border-radius: var(--ui-radius-md);
   padding: 1.25rem;
   display: flex;
@@ -833,9 +837,9 @@ onMounted(async () => {
 }
 
 .mobile-card {
-  border: 1px solid var(--ui-border-soft);
+  border: 1px solid color-mix(in srgb, var(--ui-accent-2) 24%, var(--ui-border-soft));
   border-radius: 10px;
-  background: var(--ui-surface);
+  background: linear-gradient(150deg, #ffffff 0%, color-mix(in srgb, #ffffff 90%, var(--ui-accent-2-soft)) 100%);
   padding: 0.65rem;
 }
 

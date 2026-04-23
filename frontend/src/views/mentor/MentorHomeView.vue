@@ -83,8 +83,8 @@ const quickCards: QuickCard[] = [
   align-items: center;
   gap: 0.9rem;
   padding: 1.15rem 1.15rem;
-  background: var(--ui-surface);
-  border: 1px solid var(--ui-border-soft);
+  background: linear-gradient(150deg, #ffffff 0%, color-mix(in srgb, #ffffff 80%, var(--ui-accent-soft-2)) 100%);
+  border: 1px solid color-mix(in srgb, var(--ui-accent-2) 28%, var(--ui-border-soft));
   border-radius: var(--ui-radius-md);
   text-decoration: none;
   color: var(--ui-text-primary);
@@ -95,8 +95,10 @@ const quickCards: QuickCard[] = [
 
 .quick-card:hover {
   transform: translateY(-2px);
-  box-shadow: var(--ui-shadow-md);
-  border-color: color-mix(in srgb, var(--ui-accent) 28%, var(--ui-border));
+  box-shadow:
+    0 16px 32px -22px color-mix(in srgb, var(--ui-accent-2) 54%, transparent),
+    var(--ui-shadow-md);
+  border-color: color-mix(in srgb, var(--ui-accent) 42%, var(--ui-border));
 }
 
 .quick-card:focus-visible {
@@ -111,13 +113,13 @@ const quickCards: QuickCard[] = [
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: var(--ui-accent-soft);
+  background: linear-gradient(145deg, color-mix(in srgb, var(--ui-accent-soft) 72%, #ffffff), var(--ui-accent-soft-2));
   color: var(--ui-accent-deep);
   font-size: 1.35rem;
 }
 
 .quick-card--pink .quick-card__icon {
-  background: var(--ui-pink-soft);
+  background: linear-gradient(145deg, color-mix(in srgb, var(--ui-pink-soft) 72%, #ffffff), color-mix(in srgb, var(--ui-pink-soft) 95%, var(--ui-accent-soft)));
   color: var(--tp-pink-600);
 }
 

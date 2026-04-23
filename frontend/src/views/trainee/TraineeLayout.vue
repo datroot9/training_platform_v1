@@ -118,30 +118,30 @@ function openChangePasswordDialog(): void {
   max-width: 1320px;
   margin: 0 auto;
   width: 100%;
-  border: 1px solid color-mix(in srgb, var(--ui-accent) 34%, var(--ui-border-soft));
+  border: 1px solid color-mix(in srgb, var(--ui-accent) 46%, var(--ui-border-soft));
   border-radius: var(--ui-radius-xl);
   background: linear-gradient(
     180deg,
-    #ffffff 0%,
-    color-mix(in srgb, var(--ui-accent-soft) 22%, #ffffff) 40%,
-    color-mix(in srgb, var(--ui-accent-2-soft) 28%, #ffffff) 72%,
-    color-mix(in srgb, var(--ui-coral-soft) 26%, #ffffff) 100%
+    color-mix(in srgb, #ffffff 82%, var(--ui-accent-soft-2)) 0%,
+    color-mix(in srgb, #ffffff 74%, var(--ui-accent-soft)) 38%,
+    color-mix(in srgb, #ffffff 70%, var(--ui-accent-2-soft)) 72%,
+    color-mix(in srgb, #ffffff 74%, var(--ui-coral-soft)) 100%
   );
   box-shadow:
-    0 16px 36px -22px rgba(36, 44, 70, 0.32),
-    0 6px 18px rgba(36, 44, 70, 0.1),
-    inset 0 1px 0 rgba(255, 255, 255, 0.78);
+    0 20px 42px -24px color-mix(in srgb, var(--ui-accent-2) 48%, transparent),
+    0 8px 20px rgba(36, 44, 70, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
   backdrop-filter: blur(2px);
   overflow-y: auto;
 }
 
 .left-rail {
-  border-right: 1px solid color-mix(in srgb, var(--ui-accent-2) 24%, var(--ui-border));
+  border-right: 1px solid color-mix(in srgb, var(--ui-accent-2) 40%, var(--ui-border));
   background: linear-gradient(
     180deg,
-    color-mix(in srgb, var(--ui-accent-soft-2) 58%, #ffffff) 0%,
-    color-mix(in srgb, var(--ui-accent-soft) 52%, #ffffff) 46%,
-    color-mix(in srgb, var(--ui-pink-soft) 48%, #ffffff) 100%
+    color-mix(in srgb, var(--ui-accent-soft-2) 76%, #ffffff) 0%,
+    color-mix(in srgb, var(--ui-accent-soft) 68%, #ffffff) 46%,
+    color-mix(in srgb, var(--ui-pink-soft) 64%, #ffffff) 100%
   );
   padding: 1rem 0.9rem;
   overflow: auto;
@@ -150,9 +150,9 @@ function openChangePasswordDialog(): void {
   top: 0;
   height: 100vh;
   box-shadow:
-    inset -1px 0 0 rgba(255, 255, 255, 0.72),
-    8px 0 26px -16px rgba(106, 13, 176, 0.34),
-    2px 0 10px -8px rgba(236, 72, 153, 0.28);
+    inset -1px 0 0 rgba(255, 255, 255, 0.74),
+    10px 0 28px -14px rgba(106, 13, 176, 0.42),
+    3px 0 12px -8px rgba(236, 72, 153, 0.32);
 }
 
 .fab-open {

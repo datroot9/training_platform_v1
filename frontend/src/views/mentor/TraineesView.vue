@@ -862,8 +862,12 @@ function onPageChange(event: { first: number; rows: number }): void {
 }
 
 .table-shell {
-  background: linear-gradient(135deg, #ffffff 0%, #fdfcff 100%);
-  border: 1px solid var(--ui-border-soft);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, #ffffff 84%, var(--ui-accent-soft-2)) 0%,
+    color-mix(in srgb, #ffffff 90%, var(--ui-accent-soft)) 100%
+  );
+  border: 1px solid color-mix(in srgb, var(--ui-accent-2) 24%, var(--ui-border-soft));
   border-radius: var(--ui-radius-lg);
   box-shadow: var(--ui-shadow-md);
   padding: 1rem 1rem 0.8rem;
@@ -911,8 +915,8 @@ function onPageChange(event: { first: number; rows: number }): void {
 
 .stat-card {
   min-width: 7.5rem;
-  border: 1px solid var(--ui-border-soft);
-  background: var(--ui-surface-soft);
+  border: 1px solid color-mix(in srgb, var(--ui-accent) 34%, var(--ui-border-soft));
+  background: linear-gradient(155deg, color-mix(in srgb, #ffffff 84%, var(--ui-accent-soft-2)) 0%, #ffffff 100%);
   border-radius: var(--ui-radius-md);
   padding: 0.55rem 0.7rem;
 }
@@ -966,9 +970,9 @@ function onPageChange(event: { first: number; rows: number }): void {
 }
 
 .mobile-roster-card {
-  border: 1px solid var(--ui-border-soft);
+  border: 1px solid color-mix(in srgb, var(--ui-accent-2) 26%, var(--ui-border-soft));
   border-radius: 10px;
-  background: var(--ui-surface);
+  background: linear-gradient(150deg, #ffffff 0%, color-mix(in srgb, #ffffff 90%, var(--ui-accent-2-soft)) 100%);
   box-shadow: var(--ui-shadow-xs);
   padding: 0.65rem;
 }

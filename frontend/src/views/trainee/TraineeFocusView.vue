@@ -423,16 +423,21 @@ async function runPrimaryAction(task: AssignmentTaskResponse): Promise<void> {
 }
 
 .task-pane {
-  background: var(--ui-surface);
-  border: 1px solid var(--ui-border);
+  background: linear-gradient(165deg, #ffffff 0%, color-mix(in srgb, #ffffff 88%, var(--ui-accent-soft-2)) 100%);
+  border: 1px solid color-mix(in srgb, var(--ui-accent-2) 32%, var(--ui-border));
   border-radius: 12px;
   padding: 1.05rem;
   box-shadow: var(--ui-shadow-md);
 }
 
 .meta-card {
-  border: 1px solid var(--ui-border);
-  background: linear-gradient(135deg, #ffffff 0%, var(--ui-surface-tint) 54%, var(--ui-coral-soft) 100%);
+  border: 1px solid color-mix(in srgb, var(--ui-accent) 38%, var(--ui-border));
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, #ffffff 80%, var(--ui-surface-tint)) 0%,
+    color-mix(in srgb, #ffffff 74%, var(--ui-accent-2-soft)) 54%,
+    color-mix(in srgb, #ffffff 76%, var(--ui-coral-soft)) 100%
+  );
   border-radius: var(--ui-radius-md);
   padding: 1.1rem 1.2rem 1.1rem;
   box-shadow: var(--ui-shadow-md);
@@ -548,7 +553,7 @@ async function runPrimaryAction(task: AssignmentTaskResponse): Promise<void> {
 
 .focus-card {
   margin-bottom: 0.85rem;
-  border: 1px solid color-mix(in srgb, var(--ui-accent-2) 26%, var(--ui-border));
+  border: 1px solid color-mix(in srgb, var(--ui-accent-2) 38%, var(--ui-border));
   background: linear-gradient(
     180deg,
     #ffffff 0%,
@@ -597,7 +602,7 @@ async function runPrimaryAction(task: AssignmentTaskResponse): Promise<void> {
 }
 
 .attached-material {
-  border: 1px solid color-mix(in srgb, var(--ui-accent) 24%, var(--ui-border-soft));
+  border: 1px solid color-mix(in srgb, var(--ui-accent) 36%, var(--ui-border-soft));
   background: linear-gradient(
     180deg,
     color-mix(in srgb, var(--ui-accent-soft) 42%, #ffffff) 0%,

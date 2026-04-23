@@ -190,16 +190,21 @@ function onOpenChangePassword(): void {
 }
 
 .card {
-  border: 1px solid color-mix(in srgb, var(--ui-accent) 18%, var(--ui-border-soft));
+  border: 1px solid color-mix(in srgb, var(--ui-accent) 30%, var(--ui-border-soft));
   border-radius: var(--ui-radius-md);
-  background: linear-gradient(180deg, #ffffff 0%, color-mix(in srgb, var(--ui-accent-soft) 34%, #ffffff) 100%);
+  background: linear-gradient(180deg, #ffffff 0%, color-mix(in srgb, var(--ui-accent-soft) 54%, #ffffff) 100%);
   box-shadow: var(--ui-shadow-xs);
 }
 
 .profile-block {
   text-align: center;
   padding: 0.85rem 0.85rem 0.95rem;
-  background: linear-gradient(160deg, color-mix(in srgb, var(--ui-accent-soft) 75%, #ffffff) 0%, #ffffff 55%, color-mix(in srgb, var(--ui-pink-soft) 70%, #ffffff) 100%);
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--ui-accent-soft) 84%, #ffffff) 0%,
+    #ffffff 55%,
+    color-mix(in srgb, var(--ui-pink-soft) 82%, #ffffff) 100%
+  );
 }
 
 .donut-wrap {
@@ -264,12 +269,12 @@ function onOpenChangePassword(): void {
 
 .progress-block {
   padding: 0.85rem 1rem;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--ui-accent-soft-2) 58%, #ffffff) 0%, #ffffff 100%);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--ui-accent-soft-2) 76%, #ffffff) 0%, #ffffff 100%);
 }
 
 .focus-block {
   padding: 0.85rem 1rem;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--ui-coral-soft) 46%, #ffffff) 0%, #ffffff 100%);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--ui-coral-soft) 64%, #ffffff) 0%, #ffffff 100%);
 }
 
 .curriculum-name {
@@ -309,7 +314,7 @@ function onOpenChangePassword(): void {
   flex-direction: column;
   gap: 0.45rem;
   padding: 0.85rem 0.8rem 0.8rem;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--ui-pink-soft) 44%, #ffffff) 0%, #ffffff 100%);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--ui-pink-soft) 62%, #ffffff) 0%, #ffffff 100%);
 }
 
 .w-full {

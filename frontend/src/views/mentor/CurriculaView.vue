@@ -270,8 +270,12 @@ function onPageChange(event: { first: number; rows: number }): void {
 }
 
 .table-shell {
-  background: var(--ui-surface);
-  border: 1px solid var(--ui-border-soft);
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, #ffffff 84%, var(--ui-accent-soft-2)) 0%,
+    color-mix(in srgb, #ffffff 92%, var(--ui-accent-soft)) 100%
+  );
+  border: 1px solid color-mix(in srgb, var(--ui-accent-2) 24%, var(--ui-border-soft));
   border-radius: var(--ui-radius-md);
   padding: 1.25rem;
   box-shadow: var(--ui-shadow-sm);
@@ -334,6 +338,25 @@ function onPageChange(event: { first: number; rows: number }): void {
   margin-top: 0.6rem;
   display: flex;
   justify-content: flex-end;
+}
+
+.table-shell :deep(.p-datatable .p-datatable-thead > tr > th) {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, #ffffff 58%, var(--ui-accent-soft-2)) 0%,
+    color-mix(in srgb, #ffffff 74%, var(--ui-accent-2-soft)) 100%
+  );
+  color: color-mix(in srgb, var(--ui-accent-deep) 90%, var(--text-color));
+  border-color: color-mix(in srgb, var(--ui-accent-2) 34%, var(--ui-border-soft));
+  font-weight: 700;
+}
+
+.table-shell :deep(.p-datatable .p-datatable-thead > tr > th:first-child) {
+  border-top-left-radius: 10px;
+}
+
+.table-shell :deep(.p-datatable .p-datatable-thead > tr > th:last-child) {
+  border-top-right-radius: 10px;
 }
 
 @media (max-width: 900px) {

@@ -66,10 +66,17 @@ function onBack(): void {
   justify-content: space-between;
   gap: 1rem;
   padding: 1.25rem 1.4rem;
-  border: 1px solid var(--ui-border);
+  border: 1px solid color-mix(in srgb, var(--ui-accent-2) 34%, var(--ui-border));
   border-radius: var(--ui-radius-lg);
-  background: linear-gradient(135deg, #ffffff 0%, #f6f1ff 52%, #fff5f0 100%);
-  box-shadow: var(--ui-shadow-md);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, #ffffff 84%, var(--ui-accent-soft-2)) 0%,
+    color-mix(in srgb, #ffffff 76%, var(--ui-accent-soft)) 52%,
+    color-mix(in srgb, #ffffff 78%, var(--ui-coral-soft)) 100%
+  );
+  box-shadow:
+    0 18px 34px -24px color-mix(in srgb, var(--ui-accent-2) 44%, transparent),
+    var(--ui-shadow-md);
   overflow: hidden;
 }
 
@@ -80,7 +87,7 @@ function onBack(): void {
   right: -80px;
   width: 220px;
   height: 220px;
-  background: radial-gradient(circle at center, rgba(249, 115, 96, 0.16), transparent 64%);
+  background: radial-gradient(circle at center, rgba(249, 115, 96, 0.26), transparent 64%);
   pointer-events: none;
 }
 
@@ -91,7 +98,7 @@ function onBack(): void {
   bottom: -110px;
   width: 240px;
   height: 240px;
-  background: radial-gradient(circle at center, rgba(99, 102, 241, 0.14), transparent 64%);
+  background: radial-gradient(circle at center, rgba(99, 102, 241, 0.24), transparent 64%);
   pointer-events: none;
 }
 

@@ -560,9 +560,9 @@ watch(
 }
 
 .card-shell {
-  border: 1px solid var(--ui-border);
+  border: 1px solid color-mix(in srgb, var(--ui-accent-2) 30%, var(--ui-border));
   border-radius: 12px;
-  background: var(--ui-surface);
+  background: linear-gradient(160deg, #ffffff 0%, color-mix(in srgb, #ffffff 90%, var(--ui-accent-soft-2)) 100%);
   padding: 1rem;
   box-shadow: var(--ui-shadow-md);
 }
@@ -587,9 +587,14 @@ watch(
 }
 
 .focus-card {
-  border: 1px solid var(--ui-border);
+  border: 1px solid color-mix(in srgb, var(--ui-accent-2) 32%, var(--ui-border));
   border-radius: 12px;
-  background: linear-gradient(165deg, var(--ui-accent-2-soft) 0%, var(--ui-surface-soft) 62%, #ffffff 100%);
+  background: linear-gradient(
+    165deg,
+    color-mix(in srgb, var(--ui-accent-2-soft) 70%, #ffffff) 0%,
+    color-mix(in srgb, var(--ui-surface-soft) 74%, #ffffff) 62%,
+    #ffffff 100%
+  );
   padding: 0.7rem 0.75rem;
   display: flex;
   flex-direction: column;
@@ -648,9 +653,9 @@ watch(
 .report-item {
   width: 100%;
   text-align: left;
-  border: 1px solid var(--ui-border-soft);
+  border: 1px solid color-mix(in srgb, var(--ui-accent-2) 24%, var(--ui-border-soft));
   border-radius: 10px;
-  background: var(--ui-surface);
+  background: linear-gradient(150deg, #ffffff 0%, color-mix(in srgb, #ffffff 92%, var(--ui-accent-soft)) 100%);
   padding: 0.5rem 0.55rem;
   margin-bottom: 0.45rem;
   cursor: pointer;
@@ -705,10 +710,15 @@ watch(
 }
 
 .dialog-head {
-  border-bottom: 1px solid var(--ui-border);
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-accent-2) 30%, var(--ui-border));
   padding: 1rem 1rem 0.85rem;
   flex-shrink: 0;
-  background: linear-gradient(180deg, #ffffff 0%, var(--ui-surface-tint) 62%, var(--ui-coral-soft) 100%);
+  background: linear-gradient(
+    180deg,
+    #ffffff 0%,
+    color-mix(in srgb, #ffffff 74%, var(--ui-surface-tint)) 62%,
+    color-mix(in srgb, #ffffff 76%, var(--ui-coral-soft)) 100%
+  );
 }
 
 .dialog-title-block {

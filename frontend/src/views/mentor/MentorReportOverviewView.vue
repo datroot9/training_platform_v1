@@ -17,7 +17,11 @@ const query = ref('')
 const trainees = ref<TraineeResponse[]>([])
 const traineesLoading = ref(false)
 const traineesError = ref('')
-const dailyRangePreset = ref<'LAST_10_DAYS' | 'LAST_1_MONTH' | 'ALL'>('LAST_10_DAYS')
+type DailyRangePreset = 'LAST_10_DAYS' | 'LAST_1_MONTH' | 'CUSTOM'
+const dailyRangePreset = ref<DailyRangePreset>('LAST_10_DAYS')
+const customFromDate = ref('')
+const customToDate = ref('')
+const rangeValidationError = ref('')
 type InboxDailyReport = DailyReportResponse & {
   traineeId: number
   traineeFullName: string
@@ -42,7 +46,8 @@ const isMobileTable = useMediaQuery('(max-width: 900px)')
 const currentDailyRangeLabel = computed(() => {
   if (dailyRangePreset.value === 'LAST_10_DAYS') return 'last 10 days'
   if (dailyRangePreset.value === 'LAST_1_MONTH') return 'last 1 month'
-  return 'all available days in each active assignment'
+  if (!customFromDate.value || !customToDate.value) return 'custom range'
+  return `${customFromDate.value} to ${customToDate.value}`
 })
 const filteredDailyReports = computed(() => {
   const q = query.value.trim().toLowerCase()
@@ -103,6 +108,34 @@ function toIsoDate(date: Date): string {
   return `${year}-${month}-${day}`
 }
 
+function presetRange(preset: Exclude<DailyRangePreset, 'CUSTOM'>): { fromDate: string; toDate: string } {
+  const today = new Date()
+  const toDate = toIsoDate(today)
+  if (preset === 'LAST_10_DAYS') {
+    const from = new Date(today)
+    from.setDate(from.getDate() - 9)
+    return { fromDate: toIsoDate(from), toDate }
+  }
+  const from = new Date(today)
+  from.setMonth(from.getMonth() - 1)
+  return { fromDate: toIsoDate(from), toDate }
+}
+
+function syncCustomRangeFromPreset(preset: Exclude<DailyRangePreset, 'CUSTOM'>): void {
+  const range = presetRange(preset)
+  customFromDate.value = range.fromDate
+  customToDate.value = range.toDate
+}
+
+function applyPreset(preset: Exclude<DailyRangePreset, 'CUSTOM'>): void {
+  dailyRangePreset.value = preset
+  syncCustomRangeFromPreset(preset)
+}
+
+function onCustomRangeChanged(): void {
+  dailyRangePreset.value = 'CUSTOM'
+}
+
 function buildDevSampleDailyReports(): InboxDailyReport[] {
   const now = new Date()
   const oneDayMs = 24 * 60 * 60 * 1000
@@ -153,27 +186,10 @@ function buildDevSampleDailyReports(): InboxDailyReport[] {
   })
 }
 
-function calculateDailyRange(
-  preset: 'LAST_10_DAYS' | 'LAST_1_MONTH' | 'ALL',
-  assignmentAssignedAt?: string | null,
-): { fromDate: string; toDate: string } {
-  const today = new Date()
-  const toDate = toIsoDate(today)
-
-  if (preset === 'LAST_10_DAYS') {
-    const from = new Date(today)
-    from.setDate(from.getDate() - 9)
-    return { fromDate: toIsoDate(from), toDate }
-  }
-
-  if (preset === 'LAST_1_MONTH') {
-    const from = new Date(today)
-    from.setMonth(from.getMonth() - 1)
-    return { fromDate: toIsoDate(from), toDate }
-  }
-
-  const assignedAt = assignmentAssignedAt?.slice(0, 10)
-  return { fromDate: assignedAt && assignedAt.length === 10 ? assignedAt : toDate, toDate }
+function calculateDailyRange(preset: DailyRangePreset): { fromDate: string; toDate: string } {
+  if (preset === 'LAST_10_DAYS') return presetRange('LAST_10_DAYS')
+  if (preset === 'LAST_1_MONTH') return presetRange('LAST_1_MONTH')
+  return { fromDate: customFromDate.value, toDate: customToDate.value }
 }
 
 async function loadTrainees(): Promise<void> {
@@ -195,6 +211,18 @@ async function loadTrainees(): Promise<void> {
 }
 
 async function loadDailyReports(): Promise<void> {
+  if (dailyRangePreset.value === 'CUSTOM') {
+    if (!customFromDate.value || !customToDate.value) {
+      rangeValidationError.value = 'Please select both from and to dates.'
+      return
+    }
+    if (customFromDate.value > customToDate.value) {
+      rangeValidationError.value = 'From date must be on or before to date.'
+      return
+    }
+  }
+  rangeValidationError.value = ''
+
   dailyRequestVersion += 1
   const requestVersion = dailyRequestVersion
   dailyReports.value = []
@@ -213,7 +241,7 @@ async function loadDailyReports(): Promise<void> {
       trainees.value.map(async (trainee) => {
         const assignment = await mentorApi.getTraineeActiveAssignmentOrNull(trainee.id)
         if (!assignment) return [] as InboxDailyReport[]
-        const range = calculateDailyRange(dailyRangePreset.value, assignment.assignedAt)
+        const range = calculateDailyRange(dailyRangePreset.value)
         const reports = await mentorApi.listDailyReportsForTraineeByRange(
           trainee.id,
           assignment.id,
@@ -279,12 +307,19 @@ function closeDailyDetail(): void {
 }
 
 onMounted(async () => {
+  syncCustomRangeFromPreset('LAST_10_DAYS')
   await loadTrainees()
   await loadDailyReports()
 })
 
 watch([dailyRangePreset, trainees], () => {
   void loadDailyReports()
+})
+
+watch([customFromDate, customToDate], () => {
+  if (dailyRangePreset.value === 'CUSTOM') {
+    void loadDailyReports()
+  }
 })
 
 watch(dailyReportGroups, (groups) => {
@@ -302,7 +337,7 @@ watch(dailyReportGroups, (groups) => {
         <div class="panel-tools">
           <IconField class="search-field">
             <InputIcon class="pi pi-search" />
-            <InputText v-model="query" placeholder="Search trainee name or email" @keyup.enter="searchTrainees" />
+            <InputText v-model="query" placeholder="Search trainee or email" @keyup.enter="searchTrainees" />
             <button
               v-if="hasSearchQuery"
               type="button"
@@ -318,32 +353,38 @@ watch(dailyReportGroups, (groups) => {
         <article class="surface-card">
           <div class="card-head">
             <h4>Daily reports</h4>
-            <div class="daily-presets">
-              <Button
-                label="10 days"
-                size="small"
-                text
-                :class="{ 'is-active': dailyRangePreset === 'LAST_10_DAYS' }"
-                @click="dailyRangePreset = 'LAST_10_DAYS'"
-              />
-              <Button
-                label="1 month"
-                size="small"
-                text
-                :class="{ 'is-active': dailyRangePreset === 'LAST_1_MONTH' }"
-                @click="dailyRangePreset = 'LAST_1_MONTH'"
-              />
-              <Button
-                label="All"
-                size="small"
-                text
-                :class="{ 'is-active': dailyRangePreset === 'ALL' }"
-                @click="dailyRangePreset = 'ALL'"
-              />
+            <div class="filter-controls">
+              <div class="daily-presets">
+                <Button
+                  label="10 days"
+                  size="small"
+                  text
+                  :class="{ 'is-active': dailyRangePreset === 'LAST_10_DAYS' }"
+                  @click="applyPreset('LAST_10_DAYS')"
+                />
+                <Button
+                  label="1 month"
+                  size="small"
+                  text
+                  :class="{ 'is-active': dailyRangePreset === 'LAST_1_MONTH' }"
+                  @click="applyPreset('LAST_1_MONTH')"
+                />
+              </div>
+              <div class="range-inputs">
+                <label class="range-field">
+                  <span>From</span>
+                  <input v-model="customFromDate" type="date" @change="onCustomRangeChanged" />
+                </label>
+                <label class="range-field">
+                  <span>To</span>
+                  <input v-model="customToDate" type="date" @change="onCustomRangeChanged" />
+                </label>
+              </div>
             </div>
           </div>
 
           <p class="muted small">Showing {{ currentDailyRangeLabel }}.</p>
+          <Message v-if="rangeValidationError" severity="warn" :closable="false">{{ rangeValidationError }}</Message>
 
           <Message v-if="traineesError" severity="error" :closable="false">{{ traineesError }}</Message>
           <p v-else-if="traineesLoading || dailyLoading" class="muted small">Loading daily reports...</p>
@@ -516,8 +557,8 @@ watch(dailyReportGroups, (groups) => {
 }
 
 .card-shell {
-  background: linear-gradient(165deg, #ffffff 0%, color-mix(in srgb, #ffffff 90%, var(--ui-accent-2-soft)) 100%);
-  border: 1px solid color-mix(in srgb, var(--ui-accent-2) 14%, var(--ui-border));
+  background: linear-gradient(165deg, #ffffff 0%, color-mix(in srgb, #ffffff 80%, var(--ui-accent-2-soft)) 100%);
+  border: 1px solid color-mix(in srgb, var(--ui-accent-2) 24%, var(--ui-border));
   border-radius: var(--ui-radius-lg);
   box-shadow: 0 12px 24px -18px color-mix(in srgb, var(--ui-accent-2) 24%, transparent), var(--ui-shadow-md);
   padding: 1rem;
@@ -667,7 +708,7 @@ watch(dailyReportGroups, (groups) => {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  background: linear-gradient(180deg, color-mix(in srgb, #ffffff 92%, var(--ui-accent-2-soft)) 0%, #ffffff 100%);
+  background: linear-gradient(180deg, color-mix(in srgb, #ffffff 82%, var(--ui-accent-2-soft)) 0%, #ffffff 100%);
 }
 
 .report-head {
@@ -756,9 +797,9 @@ watch(dailyReportGroups, (groups) => {
 }
 
 .surface-card {
-  border: 1px solid color-mix(in srgb, var(--ui-accent-2) 12%, var(--ui-border));
+  border: 1px solid color-mix(in srgb, var(--ui-accent-2) 24%, var(--ui-border));
   border-radius: 10px;
-  background: linear-gradient(180deg, #ffffff 0%, color-mix(in srgb, #ffffff 92%, var(--ui-accent-2-soft)) 100%);
+  background: linear-gradient(180deg, #ffffff 0%, color-mix(in srgb, #ffffff 84%, var(--ui-accent-2-soft)) 100%);
   padding: 0.75rem;
   box-shadow: 0 10px 22px -20px color-mix(in srgb, var(--ui-accent-2) 25%, transparent), var(--ui-shadow-xs);
 }
@@ -776,6 +817,13 @@ watch(dailyReportGroups, (groups) => {
   margin-bottom: 0.5rem;
 }
 
+.filter-controls {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
 .week-select {
   border: 1px solid var(--ui-border);
   border-radius: 8px;
@@ -788,7 +836,6 @@ watch(dailyReportGroups, (groups) => {
 
 .daily-presets {
   display: inline-flex;
-  flex-wrap: wrap;
   border: 1px solid var(--ui-border);
   border-radius: 8px;
   overflow: hidden;
@@ -804,6 +851,45 @@ watch(dailyReportGroups, (groups) => {
   color: var(--ui-accent-2);
 }
 
+.range-inputs {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.range-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  padding: 0.22rem 0.38rem;
+  border: 1px solid color-mix(in srgb, var(--ui-accent-2) 20%, var(--ui-border));
+  border-radius: 8px;
+  background: color-mix(in srgb, #ffffff 85%, var(--ui-accent-2-soft));
+  font-size: 0.76rem;
+  color: var(--ui-text-secondary);
+}
+
+.range-field span {
+  font-weight: 600;
+  color: var(--ui-accent-deep);
+}
+
+.range-field input {
+  border: 0;
+  background: transparent;
+  color: var(--ui-text-primary);
+  font-size: 0.8rem;
+  padding: 0;
+  min-width: 8.7rem;
+  outline: none;
+}
+
+.range-field:focus-within {
+  border-color: color-mix(in srgb, var(--ui-accent-2) 42%, var(--ui-border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-accent-2-soft) 65%, transparent);
+}
+
 @media (max-width: 1280px) {
   .report-head {
     flex-direction: column;
@@ -816,7 +902,6 @@ watch(dailyReportGroups, (groups) => {
 
   .daily-presets {
     display: flex;
-    width: 100%;
     border: 0;
     border-radius: 0;
     background: transparent;
@@ -828,6 +913,24 @@ watch(dailyReportGroups, (groups) => {
     border-radius: 8px;
     border: 1px solid var(--ui-border);
     flex: 1 1 7.25rem;
+  }
+
+  .filter-controls {
+    width: 100%;
+  }
+
+  .range-inputs {
+    width: 100%;
+    gap: 0.45rem;
+  }
+
+  .range-field {
+    flex: 1 1 12rem;
+  }
+
+  .range-field input {
+    min-width: 0;
+    width: 100%;
   }
 }
 
