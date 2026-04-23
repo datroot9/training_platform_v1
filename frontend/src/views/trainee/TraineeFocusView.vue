@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import Avatar from 'primevue/avatar'
 import Button from 'primevue/button'
 import Card from 'primevue/card'
+import Dialog from 'primevue/dialog'
 import Message from 'primevue/message'
 import ProgressSpinner from 'primevue/progressspinner'
 import Tag from 'primevue/tag'
@@ -25,11 +26,14 @@ const {
   totalTaskCount,
   progressPercent,
   updatingTaskIds,
+  previewMaterialId,
   previewFileName,
+  previewFileSizeBytes,
   previewUrl,
   previewLoading,
   previewError,
   setTaskStatus,
+  downloadPdf,
   loadMaterialPreview,
   clearMaterialPreview,
   downloadPreviewedPdf,
@@ -40,8 +44,7 @@ const lastCompletedIndex = computed(() =>
   orderedTasks.value.reduce((last, task, index) => (task.status === 'DONE' ? index : last), -1),
 )
 const selectedTaskId = ref<number | null>(null)
-const pdfShellRef = ref<HTMLElement | null>(null)
-const isPdfFullscreen = ref(false)
+const previewDialogVisible = ref(false)
 
 const selectedTask = computed<AssignmentTaskResponse | null>(() => {
   if (selectedTaskId.value == null) return null
@@ -93,6 +96,13 @@ const previewIframeSrc = computed(() => {
   return `${previewUrl.value}#toolbar=0&navpanes=0&statusbar=0&messages=0`
 })
 
+const selectedTaskMaterialSize = computed(() => {
+  const task = selectedTask.value
+  if (!task || task.learningMaterialId == null) return '-'
+  if (previewMaterialId.value !== task.learningMaterialId || previewFileSizeBytes.value == null) return '-'
+  return formatBytes(previewFileSizeBytes.value)
+})
+
 function buildTaskPdfName(title?: string | null): string {
   const raw = (title ?? '').trim()
   if (!raw) return 'learning-material.pdf'
@@ -105,22 +115,35 @@ function buildTaskPdfName(title?: string | null): string {
   return `${sanitized}.pdf`
 }
 
-function syncFullscreenState(): void {
-  isPdfFullscreen.value = document.fullscreenElement === pdfShellRef.value
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '-'
+  const units = ['B', 'KB', 'MB', 'GB']
+  let value = bytes
+  let idx = 0
+  while (value >= 1024 && idx < units.length - 1) {
+    value /= 1024
+    idx += 1
+  }
+  const precision = idx === 0 ? 0 : value >= 10 ? 1 : 2
+  return `${value.toFixed(precision)} ${units[idx]}`
 }
 
-async function togglePdfFullscreen(): Promise<void> {
-  const shell = pdfShellRef.value
-  if (!shell) return
-  try {
-    if (document.fullscreenElement === shell) {
-      await document.exitFullscreen()
-      return
-    }
-    await shell.requestFullscreen()
-  } catch {
-    // Browser denied fullscreen request (gesture or policy).
+async function openPreviewDialog(): Promise<void> {
+  const task = selectedTask.value
+  if (!task || task.learningMaterialId == null) return
+  previewDialogVisible.value = true
+  if (previewMaterialId.value === task.learningMaterialId && previewUrl.value) return
+  await loadMaterialPreview(task.learningMaterialId, buildTaskPdfName(task.title))
+}
+
+async function downloadSelectedMaterial(): Promise<void> {
+  const task = selectedTask.value
+  if (!task || task.learningMaterialId == null) return
+  if (previewMaterialId.value === task.learningMaterialId && previewUrl.value) {
+    await downloadPreviewedPdf()
+    return
   }
+  await downloadPdf(task.learningMaterialId)
 }
 
 watch(
@@ -141,12 +164,13 @@ watch(
 
 watch(
   selectedTask,
-  async (task) => {
+  (task) => {
+    previewDialogVisible.value = false
     if (!task || task.learningMaterialId == null) {
       clearMaterialPreview()
       return
     }
-    await loadMaterialPreview(task.learningMaterialId, buildTaskPdfName(task.title))
+    clearMaterialPreview()
   },
   { immediate: true },
 )
@@ -168,13 +192,6 @@ async function runPrimaryAction(task: AssignmentTaskResponse): Promise<void> {
   }
 }
 
-onMounted(() => {
-  document.addEventListener('fullscreenchange', syncFullscreenState)
-})
-
-onBeforeUnmount(() => {
-  document.removeEventListener('fullscreenchange', syncFullscreenState)
-})
 </script>
 
 <template>
@@ -243,12 +260,48 @@ onBeforeUnmount(() => {
         <Card v-if="selectedTask" class="focus-card">
           <template #title>
             <div class="focus-title-row">
-              <span>Step {{ selectedTask.sortOrder }} · {{ selectedTask.title }}</span>
+              <span class="focus-task-title">Step {{ selectedTask.sortOrder }} · {{ selectedTask.title }}</span>
               <Tag :value="taskStatusLabel(selectedTask.status)" :severity="taskStatusTagSeverity(selectedTask.status)" rounded />
             </div>
           </template>
           <template #content>
             <p v-if="selectedTask.description" class="desc">{{ selectedTask.description }}</p>
+
+            <section class="attached-material">
+              <div class="attached-material-head">
+                <h4>Attached material</h4>
+              </div>
+              <Message v-if="selectedTask.learningMaterialId == null" severity="info" :closable="false">
+                This task has no PDF material attached.
+              </Message>
+              <div v-else class="attached-material-row">
+                <div class="attached-material-main">
+                  <p class="attached-material-name">
+                    {{ selectedTask.learningMaterialFileName || buildTaskPdfName(selectedTask.title) }}
+                  </p>
+                  <p class="attached-material-meta">Size: {{ selectedTaskMaterialSize }}</p>
+                </div>
+                <div class="attached-material-actions">
+                  <Button
+                    icon="pi pi-eye"
+                    text
+                    rounded
+                    aria-label="Preview material"
+                    :disabled="previewLoading"
+                    @click="openPreviewDialog"
+                  />
+                  <Button
+                    icon="pi pi-download"
+                    text
+                    rounded
+                    aria-label="Download material"
+                    :disabled="previewLoading"
+                    @click="downloadSelectedMaterial"
+                  />
+                </div>
+              </div>
+            </section>
+
             <div class="focus-actions">
               <Button
                 v-if="selectedPrimaryAction"
@@ -303,47 +356,49 @@ onBeforeUnmount(() => {
           </div>
         </section>
       </section>
+    </div>
 
-      <aside class="material-pane">
-        <div class="material-head">
-          <h3 class="material-title">Learning material</h3>
-          <div class="material-actions">
+    <Dialog
+      v-model:visible="previewDialogVisible"
+      modal
+      dismissable-mask
+      close-on-escape
+      :draggable="false"
+      :style="{ width: 'min(1100px, 94vw)' }"
+      class="material-preview-dialog"
+      header="Material preview"
+    >
+      <template #header>
+        <div class="preview-dialog-head">
+          <div class="preview-dialog-title">
+            {{ previewFileName || selectedTask?.learningMaterialFileName || 'learning-material.pdf' }}
+          </div>
+          <div class="preview-dialog-actions">
             <Button
-              label="Download"
               icon="pi pi-download"
               text
-              size="small"
-              :disabled="!previewUrl || previewLoading"
+              rounded
+              aria-label="Download material"
+              :disabled="previewLoading || !previewUrl"
               @click="downloadPreviewedPdf"
-            />
-            <Button
-              :label="isPdfFullscreen ? 'Exit full screen' : 'Full screen'"
-              :icon="isPdfFullscreen ? 'pi pi-window-minimize' : 'pi pi-window-maximize'"
-              text
-              size="small"
-              :disabled="!previewUrl || previewLoading"
-              @click="togglePdfFullscreen"
             />
           </div>
         </div>
+      </template>
 
+      <div class="preview-dialog-body">
         <div v-if="previewLoading" class="material-loading">
           <ProgressSpinner stroke-width="3" animation-duration=".8s" style="width: 2.2rem; height: 2.2rem" />
           <p class="muted">Loading PDF...</p>
         </div>
         <Message v-else-if="previewError" severity="error" :closable="false">{{ previewError }}</Message>
-        <Message v-else-if="!selectedTask" severity="info" :closable="false">
-          Select a task to review its details and learning material.
-        </Message>
-        <Message v-else-if="selectedTask.learningMaterialId == null" severity="info" :closable="false">
-          This task has no PDF material attached.
-        </Message>
-        <div v-else-if="previewUrl" ref="pdfShellRef" class="pdf-wrap">
+        <Message v-else-if="!previewUrl" severity="info" :closable="false">No preview available.</Message>
+        <div v-else class="pdf-wrap">
           <p class="pdf-name">{{ previewFileName || 'learning-material.pdf' }}</p>
           <iframe :src="previewIframeSrc" title="Learning material preview" class="pdf-frame" />
         </div>
-      </aside>
-    </div>
+      </div>
+    </Dialog>
   </div>
 </template>
 
@@ -364,14 +419,10 @@ onBeforeUnmount(() => {
 
 .focus-grid {
   margin-top: 0.25rem;
-  display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
-  gap: 1rem;
-  align-items: start;
+  display: block;
 }
 
-.task-pane,
-.material-pane {
+.task-pane {
   background: var(--ui-surface);
   border: 1px solid var(--ui-border);
   border-radius: 12px;
@@ -497,8 +548,16 @@ onBeforeUnmount(() => {
 
 .focus-card {
   margin-bottom: 0.85rem;
-  border: 1px solid var(--ui-border);
-  box-shadow: var(--ui-shadow-xs);
+  border: 1px solid color-mix(in srgb, var(--ui-accent-2) 26%, var(--ui-border));
+  background: linear-gradient(
+    180deg,
+    #ffffff 0%,
+    color-mix(in srgb, var(--ui-accent-soft) 22%, #ffffff) 72%,
+    color-mix(in srgb, var(--ui-coral-soft) 16%, #ffffff) 100%
+  );
+  box-shadow:
+    0 12px 24px -20px rgba(36, 44, 70, 0.32),
+    0 4px 10px rgba(36, 44, 70, 0.08);
 }
 
 .focus-title-row {
@@ -509,10 +568,18 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
 }
 
+.focus-task-title {
+  font-size: 1.02rem;
+  font-weight: 800;
+  line-height: 1.35;
+  color: color-mix(in srgb, var(--ui-accent-deep) 82%, #101828);
+}
+
 .desc {
   margin: 0 0 0.8rem;
-  color: var(--ui-text-secondary);
-  line-height: 1.5;
+  color: color-mix(in srgb, var(--ui-text-primary) 74%, var(--ui-text-secondary));
+  line-height: 1.58;
+  font-size: 0.93rem;
 }
 
 .estimate {
@@ -526,6 +593,57 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
   gap: 0.6rem;
   align-items: center;
+  margin-top: 0.85rem;
+}
+
+.attached-material {
+  border: 1px solid color-mix(in srgb, var(--ui-accent) 24%, var(--ui-border-soft));
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--ui-accent-soft) 42%, #ffffff) 0%,
+    color-mix(in srgb, var(--ui-accent-2-soft) 36%, #ffffff) 100%
+  );
+  border-radius: 10px;
+  padding: 0.72rem 0.8rem;
+}
+
+.attached-material-head h4 {
+  margin: 0 0 0.5rem;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: color-mix(in srgb, var(--ui-accent-deep) 78%, var(--ui-heading));
+}
+
+.attached-material-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.7rem;
+  align-items: center;
+}
+
+.attached-material-main {
+  min-width: 0;
+}
+
+.attached-material-name {
+  margin: 0;
+  color: color-mix(in srgb, var(--ui-text-primary) 88%, #05070b);
+  font-size: 0.94rem;
+  font-weight: 700;
+  word-break: break-word;
+}
+
+.attached-material-meta {
+  margin: 0.22rem 0 0;
+  color: color-mix(in srgb, var(--ui-text-secondary) 78%, var(--ui-accent-deep));
+  font-size: 0.83rem;
+  font-weight: 600;
+}
+
+.attached-material-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
 }
 
 .queue-title {
@@ -657,25 +775,6 @@ onBeforeUnmount(() => {
   box-shadow: 0 0 0 3px var(--ui-focus-ring);
 }
 
-.material-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 0.6rem;
-  align-items: center;
-  margin-bottom: 0.6rem;
-}
-
-.material-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.15rem;
-}
-
-.material-title {
-  margin: 0;
-  font-size: 1rem;
-}
-
 .material-loading {
   min-height: 14rem;
   display: flex;
@@ -689,6 +788,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  min-height: min(72vh, 820px);
 }
 
 .pdf-name {
@@ -699,29 +799,37 @@ onBeforeUnmount(() => {
 
 .pdf-frame {
   width: 100%;
+  flex: 1;
   min-height: min(65vh, 760px);
   border: 1px solid var(--ui-border-soft);
   border-radius: 8px;
   background: var(--ui-surface);
 }
 
-.pdf-wrap:fullscreen {
-  width: 100vw;
-  height: 100vh;
-  background: #0f172a;
-  padding: 0.75rem;
-  gap: 0.65rem;
+.preview-dialog-head {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
 }
 
-.pdf-wrap:fullscreen .pdf-name {
-  color: #e2e8f0;
+.preview-dialog-title {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--ui-heading);
+  word-break: break-word;
 }
 
-.pdf-wrap:fullscreen .pdf-frame {
-  flex: 1;
-  min-height: 0;
-  border-color: #334155;
-  border-radius: 6px;
+.preview-dialog-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.1rem;
+}
+
+.preview-dialog-body {
+  max-height: min(80vh, 860px);
+  overflow: auto;
 }
 
 .muted {
@@ -734,8 +842,9 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 1100px) {
-  .focus-grid {
-    grid-template-columns: 1fr;
+  .attached-material-row {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .pdf-frame {

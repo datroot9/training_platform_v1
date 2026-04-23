@@ -25,6 +25,7 @@ export interface TraineeAssignmentContext {
   updatingTaskIds: Ref<Set<number>>
   previewMaterialId: Ref<number | null>
   previewFileName: Ref<string>
+  previewFileSizeBytes: Ref<number | null>
   previewUrl: Ref<string | null>
   previewLoading: Ref<boolean>
   previewError: Ref<string>
@@ -107,6 +108,7 @@ export function useTraineeAssignment(): TraineeAssignmentContext {
   const updatingTaskIds = ref<Set<number>>(new Set())
   const previewMaterialId = ref<number | null>(null)
   const previewFileName = ref('')
+  const previewFileSizeBytes = ref<number | null>(null)
   const previewUrl = ref<string | null>(null)
   const previewLoading = ref(false)
   const previewError = ref('')
@@ -139,6 +141,7 @@ export function useTraineeAssignment(): TraineeAssignmentContext {
     previewBlob.value = null
     previewMaterialId.value = null
     previewFileName.value = ''
+    previewFileSizeBytes.value = null
     previewError.value = ''
     previewLoading.value = false
   }
@@ -200,11 +203,13 @@ export function useTraineeAssignment(): TraineeAssignmentContext {
       const previewFile = new File([blob], resolvedFileName, { type: blob.type || 'application/pdf' })
       previewBlob.value = previewFile
       previewFileName.value = previewFile.name
+      previewFileSizeBytes.value = previewFile.size
       previewUrl.value = URL.createObjectURL(previewFile)
     } catch (e) {
       if (requestVersion !== previewRequestVersion) return
       previewBlob.value = null
       previewFileName.value = ''
+      previewFileSizeBytes.value = null
       previewMaterialId.value = null
       revokePreviewUrl()
       previewError.value = e instanceof Error ? e.message : 'Could not load learning material'
@@ -265,6 +270,7 @@ export function useTraineeAssignment(): TraineeAssignmentContext {
     updatingTaskIds,
     previewMaterialId,
     previewFileName,
+    previewFileSizeBytes,
     previewUrl,
     previewLoading,
     previewError,

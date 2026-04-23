@@ -1,72 +1,86 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import Avatar from 'primevue/avatar'
 import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
 import IconField from 'primevue/iconfield'
 import InputIcon from 'primevue/inputicon'
 import InputText from 'primevue/inputtext'
 import Message from 'primevue/message'
-import ProgressSpinner from 'primevue/progressspinner'
 import Tag from 'primevue/tag'
 import { ApiError } from '../../api/client'
 import * as mentorApi from '../../api/modules/mentor'
 import { useMediaQuery } from '../../composables/useMediaQuery'
-import type { AssignmentResponse, DailyReportResponse, TraineeResponse, WeeklySummaryResponse } from '../../api/types'
+import type { DailyReportResponse, TraineeResponse } from '../../api/types'
 import PageHeader from '../../components/layout/PageHeader.vue'
 
 const query = ref('')
 const trainees = ref<TraineeResponse[]>([])
 const traineesLoading = ref(false)
 const traineesError = ref('')
-const selectedTraineeId = ref<number | null>(null)
-
-const reportMode = ref<'weekly' | 'daily'>('weekly')
 const dailyRangePreset = ref<'LAST_10_DAYS' | 'LAST_1_MONTH' | 'ALL'>('LAST_10_DAYS')
-const dailyReports = ref<DailyReportResponse[]>([])
+type InboxDailyReport = DailyReportResponse & {
+  traineeId: number
+  traineeFullName: string
+  traineeEmail: string
+  assignmentName: string
+}
+type DailyReportGroup = {
+  reportDate: string
+  items: InboxDailyReport[]
+  count: number
+}
+const dailyReports = ref<InboxDailyReport[]>([])
 const dailyLoading = ref(false)
 const dailyError = ref('')
 const dailyDetailVisible = ref(false)
-const dailyDetailItem = ref<DailyReportResponse | null>(null)
-
-const detailLoading = ref(false)
-const detailError = ref('')
-const activeAssignment = ref<AssignmentResponse | null>(null)
-const weeklySummaries = ref<WeeklySummaryResponse[]>([])
-const selectedWeekStart = ref('')
-const expandedWhatDoneIds = ref<number[]>([])
-
-let detailRequestVersion = 0
+const dailyDetailItem = ref<InboxDailyReport | null>(null)
+const expandedGroupDates = ref<string[]>([])
 let dailyRequestVersion = 0
 
-const selectedTrainee = computed(() => trainees.value.find((item) => item.id === selectedTraineeId.value) ?? null)
-const hasSelectedTrainee = computed(() => selectedTrainee.value != null)
 const hasSearchQuery = computed(() => query.value.trim().length > 0)
 const isMobileTable = useMediaQuery('(max-width: 900px)')
-const sortedWeeklySummaries = computed(() =>
-  [...weeklySummaries.value].sort((a, b) => b.weekStart.localeCompare(a.weekStart)),
-)
-const selectedWeeklySummary = computed(
-  () => sortedWeeklySummaries.value.find((item) => item.weekStart === selectedWeekStart.value) ?? null,
-)
 const currentDailyRangeLabel = computed(() => {
   if (dailyRangePreset.value === 'LAST_10_DAYS') return 'last 10 days'
   if (dailyRangePreset.value === 'LAST_1_MONTH') return 'last 1 month'
-  return 'all available days in active assignment'
+  return 'all available days in each active assignment'
+})
+const filteredDailyReports = computed(() => {
+  const q = query.value.trim().toLowerCase()
+  if (!q) return dailyReports.value
+  return dailyReports.value.filter(
+    (item) =>
+      item.traineeFullName.toLowerCase().includes(q) ||
+      item.traineeEmail.toLowerCase().includes(q) ||
+      item.fresherLabel.toLowerCase().includes(q),
+  )
+})
+const dailyReportGroups = computed<DailyReportGroup[]>(() => {
+  const groups = new Map<string, InboxDailyReport[]>()
+  for (const item of filteredDailyReports.value) {
+    const rows = groups.get(item.reportDate)
+    if (rows) {
+      rows.push(item)
+    } else {
+      groups.set(item.reportDate, [item])
+    }
+  }
+  return Array.from(groups.entries()).map(([reportDate, items]) => ({
+    reportDate,
+    items,
+    count: items.length,
+  }))
 })
 
-function initials(name?: string): string {
-  const parts = (name ?? '').trim().split(/\s+/).filter(Boolean)
-  if (parts.length === 0) return 'TR'
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
-  return `${parts[0][0] ?? ''}${parts[parts.length - 1][0] ?? ''}`.toUpperCase()
+function isGroupExpanded(dateKey: string): boolean {
+  return expandedGroupDates.value.includes(dateKey)
 }
 
-function formatDate(value?: string | null): string {
-  if (!value) return '-'
-  const d = new Date(value)
-  if (Number.isNaN(d.getTime())) return '-'
-  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(d)
+function toggleGroup(dateKey: string): void {
+  if (isGroupExpanded(dateKey)) {
+    expandedGroupDates.value = expandedGroupDates.value.filter((key) => key !== dateKey)
+    return
+  }
+  expandedGroupDates.value = [...expandedGroupDates.value, dateKey]
 }
 
 function formatDateTime(value?: string | null): string {
@@ -87,6 +101,56 @@ function toIsoDate(date: Date): string {
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
+}
+
+function buildDevSampleDailyReports(): InboxDailyReport[] {
+  const now = new Date()
+  const oneDayMs = 24 * 60 * 60 * 1000
+  const buildDate = (daysAgo: number) => toIsoDate(new Date(now.getTime() - daysAgo * oneDayMs))
+  const buildDateTime = (daysAgo: number, hour: number, minute: number) => {
+    const d = new Date(now.getTime() - daysAgo * oneDayMs)
+    d.setHours(hour, minute, 0, 0)
+    return d.toISOString()
+  }
+
+  const samples: InboxDailyReport[] = Array.from({ length: 20 }, (_, index) => {
+    const isEven = index % 2 === 0
+    const reportDate = buildDate(index)
+    return {
+      id: 900001 + index,
+      assignmentId: isEven ? 7001 : 7002,
+      reportDate,
+      status: 'SUBMITTED' as const,
+      fresherLabel: isEven ? 'Dat123' : 'Giang',
+      trainingDayIndex: 6 + index,
+      whatDone: `Completed mentor inbox story slice #${index + 1} and validated reporting UX consistency.`,
+      plannedTomorrow: `Continue with backend cleanup and tests for report item #${index + 2}.`,
+      blockers: index % 5 === 0 ? 'Need mentor confirmation on endpoint naming.' : 'No blockers',
+      resources:
+        index % 3 === 0
+          ? [
+              {
+                id: 910001 + index,
+                type: 'GITHUB',
+                label: `Demo PR #${index + 100}`,
+                url: `https://github.com/example/training-platform/pull/${index + 100}`,
+              },
+            ]
+          : [],
+      submittedAt: buildDateTime(index, 17 + (index % 2), 10 + (index % 40)),
+      reviewedAt: null,
+      taskHours: [],
+      traineeId: isEven ? 5001 : 5002,
+      traineeFullName: isEven ? 'Huynh Dat' : 'Cao Thuy Giang',
+      traineeEmail: isEven ? 'dat123@gmail.com' : 'giangct@gmail.com',
+      assignmentName: 'Backend API Fundamentals',
+    }
+  })
+  return samples.sort((a, b) => {
+    const byDate = b.reportDate.localeCompare(a.reportDate)
+    if (byDate !== 0) return byDate
+    return (b.submittedAt ?? '').localeCompare(a.submittedAt ?? '')
+  })
 }
 
 function calculateDailyRange(
@@ -117,23 +181,12 @@ async function loadTrainees(): Promise<void> {
   traineesError.value = ''
   try {
     const res = await mentorApi.listActiveTrainees({
-      q: query.value.trim() || undefined,
       page: 0,
       size: 100,
       sortBy: 'fullName',
       sortDir: 'asc',
     })
     trainees.value = res.items
-
-    if (trainees.value.length === 0) {
-      selectedTraineeId.value = null
-      return
-    }
-
-    const stillSelected = selectedTraineeId.value != null && trainees.value.some((item) => item.id === selectedTraineeId.value)
-    if (!stillSelected) {
-      selectedTraineeId.value = trainees.value[0].id
-    }
   } catch (e) {
     traineesError.value = e instanceof ApiError ? e.message : 'Failed to load active trainees'
   } finally {
@@ -141,71 +194,65 @@ async function loadTrainees(): Promise<void> {
   }
 }
 
-async function loadSelectedTraineeReports(): Promise<void> {
-  const trainee = selectedTrainee.value
-  detailRequestVersion += 1
-  const requestVersion = detailRequestVersion
-
-  activeAssignment.value = null
-  weeklySummaries.value = []
-  selectedWeekStart.value = ''
-  dailyReports.value = []
-  dailyError.value = ''
-  detailError.value = ''
-
-  if (!trainee) {
-    detailLoading.value = false
-    return
-  }
-
-  detailLoading.value = true
-  try {
-    const assignment = await mentorApi.getTraineeActiveAssignmentOrNull(trainee.id)
-    if (requestVersion !== detailRequestVersion) return
-    activeAssignment.value = assignment
-    if (!assignment) return
-
-    const summaries = await mentorApi.listWeeklySummariesForTrainee(trainee.id, assignment.id)
-    if (requestVersion !== detailRequestVersion) return
-    weeklySummaries.value = summaries
-  } catch (e) {
-    if (requestVersion !== detailRequestVersion) return
-    detailError.value = e instanceof ApiError ? e.message : 'Failed to load trainee reports'
-  } finally {
-    if (requestVersion === detailRequestVersion) {
-      detailLoading.value = false
-    }
-  }
-}
-
 async function loadDailyReports(): Promise<void> {
-  const trainee = selectedTrainee.value
-  const assignment = activeAssignment.value
   dailyRequestVersion += 1
   const requestVersion = dailyRequestVersion
-
   dailyReports.value = []
   dailyError.value = ''
-
-  if (!trainee || !assignment) {
+  if (trainees.value.length === 0) {
+    if (import.meta.env.DEV) {
+      dailyReports.value = buildDevSampleDailyReports()
+    }
     dailyLoading.value = false
     return
   }
 
   dailyLoading.value = true
   try {
-    const range = calculateDailyRange(dailyRangePreset.value, assignment.assignedAt)
-    const reports = await mentorApi.listDailyReportsForTraineeByRange(
-      trainee.id,
-      assignment.id,
-      range.fromDate,
-      range.toDate,
+    const allReports = await Promise.all(
+      trainees.value.map(async (trainee) => {
+        const assignment = await mentorApi.getTraineeActiveAssignmentOrNull(trainee.id)
+        if (!assignment) return [] as InboxDailyReport[]
+        const range = calculateDailyRange(dailyRangePreset.value, assignment.assignedAt)
+        const reports = await mentorApi.listDailyReportsForTraineeByRange(
+          trainee.id,
+          assignment.id,
+          range.fromDate,
+          range.toDate,
+        )
+        return reports.map(
+          (item): InboxDailyReport => ({
+            ...item,
+            traineeId: trainee.id,
+            traineeFullName: trainee.fullName,
+            traineeEmail: trainee.email,
+            assignmentName: assignment.curriculumName,
+          }),
+        )
+      }),
     )
     if (requestVersion !== dailyRequestVersion) return
-    dailyReports.value = [...reports].sort((a, b) => b.reportDate.localeCompare(a.reportDate))
+    const mergedReports = allReports
+      .flat()
+      .sort((a, b) => {
+        const byDate = b.reportDate.localeCompare(a.reportDate)
+        if (byDate !== 0) return byDate
+        return (b.submittedAt ?? '').localeCompare(a.submittedAt ?? '')
+      })
+    const submittedReports = mergedReports.filter((item) => item.status === 'SUBMITTED')
+    if (import.meta.env.DEV && submittedReports.length === 0) {
+      dailyReports.value = buildDevSampleDailyReports()
+      return
+    }
+    dailyReports.value = submittedReports
   } catch (e) {
     if (requestVersion !== dailyRequestVersion) return
-    dailyError.value = e instanceof ApiError ? e.message : 'Failed to load daily reports'
+    if (import.meta.env.DEV) {
+      dailyError.value = ''
+      dailyReports.value = buildDevSampleDailyReports()
+      return
+    }
+    dailyError.value = e instanceof ApiError ? e.message : 'Failed to load reports'
   } finally {
     if (requestVersion === dailyRequestVersion) {
       dailyLoading.value = false
@@ -213,20 +260,15 @@ async function loadDailyReports(): Promise<void> {
   }
 }
 
-function selectTrainee(traineeId: number): void {
-  selectedTraineeId.value = traineeId
+function searchTrainees(): void {
+  // Local filtering only in inbox mode.
 }
 
-async function searchTrainees(): Promise<void> {
-  await loadTrainees()
-}
-
-async function clearSearch(): Promise<void> {
+function clearSearch(): void {
   query.value = ''
-  await loadTrainees()
 }
 
-function openDailyDetail(item: DailyReportResponse): void {
+function openDailyDetail(item: InboxDailyReport): void {
   dailyDetailItem.value = item
   dailyDetailVisible.value = true
 }
@@ -236,76 +278,31 @@ function closeDailyDetail(): void {
   dailyDetailItem.value = null
 }
 
-function resolvedWhatDone(item: DailyReportResponse): string {
-  return item.whatDone?.trim() || 'No update.'
-}
-
-function shouldShowWhatDoneToggle(item: DailyReportResponse): boolean {
-  return resolvedWhatDone(item).length > 120
-}
-
-function isWhatDoneExpanded(reportId: number): boolean {
-  return expandedWhatDoneIds.value.includes(reportId)
-}
-
-function toggleWhatDone(reportId: number): void {
-  if (isWhatDoneExpanded(reportId)) {
-    expandedWhatDoneIds.value = expandedWhatDoneIds.value.filter((id) => id !== reportId)
-    return
-  }
-  expandedWhatDoneIds.value = [...expandedWhatDoneIds.value, reportId]
-}
-
 onMounted(async () => {
   await loadTrainees()
+  await loadDailyReports()
 })
 
-watch(selectedTraineeId, () => {
-  void loadSelectedTraineeReports()
+watch([dailyRangePreset, trainees], () => {
+  void loadDailyReports()
 })
 
-watch(sortedWeeklySummaries, (items) => {
-  if (items.length === 0) {
-    selectedWeekStart.value = ''
-    return
-  }
-  const exists = items.some((item) => item.weekStart === selectedWeekStart.value)
-  if (!exists) {
-    selectedWeekStart.value = items[0].weekStart
-  }
-})
-
-watch([reportMode, dailyRangePreset, () => activeAssignment.value?.id, selectedTraineeId], () => {
-  if (reportMode.value === 'daily') {
-    void loadDailyReports()
-  }
-})
-
-watch(dailyReports, (items) => {
-  const validIds = new Set(items.map((item) => item.id))
-  expandedWhatDoneIds.value = expandedWhatDoneIds.value.filter((id) => validIds.has(id))
+watch(dailyReportGroups, (groups) => {
+  const valid = new Set(groups.map((group) => group.reportDate))
+  expandedGroupDates.value = expandedGroupDates.value.filter((key) => valid.has(key))
 })
 </script>
 
 <template>
   <div class="mentor-reports-page">
-    <PageHeader
-      title="Mentor reports"
-      description="Review active trainees and inspect their weekly reporting progress by current curriculum."
-      tag-value="MVP: Active assignments only"
-      tag-severity="warn"
-    />
+    <PageHeader title="Mentor reports" description="Inbox view of daily reports across active trainees and assignments." />
 
     <section class="reports-layout">
-      <aside class="trainee-panel card-shell">
-        <div class="panel-head">
-          <h3>Active trainees</h3>
-        </div>
-
+      <section class="report-panel card-shell">
         <div class="panel-tools">
           <IconField class="search-field">
             <InputIcon class="pi pi-search" />
-            <InputText v-model="query" placeholder="Search name or email" @keyup.enter="searchTrainees" />
+            <InputText v-model="query" placeholder="Search trainee name or email" @keyup.enter="searchTrainees" />
             <button
               v-if="hasSearchQuery"
               type="button"
@@ -318,216 +315,88 @@ watch(dailyReports, (items) => {
           </IconField>
         </div>
 
-        <Message v-if="traineesError" severity="error" :closable="false">{{ traineesError }}</Message>
-        <div v-else-if="traineesLoading" class="centered">
-          <ProgressSpinner stroke-width="3" animation-duration=".8s" style="width: 2.1rem; height: 2.1rem" />
-        </div>
-        <p v-else-if="trainees.length === 0" class="muted small">No active trainees found.</p>
-        <div v-else class="trainee-list">
-          <button
-            v-for="item in trainees"
-            :key="item.id"
-            type="button"
-            class="trainee-item"
-            :class="{ active: item.id === selectedTraineeId }"
-            @click="selectTrainee(item.id)"
-          >
-            <div class="trainee-item-top">
-              <div class="trainee-user">
-                <Avatar :label="initials(item.fullName)" shape="circle" />
-                <div class="trainee-main">
-                  <p class="name">{{ item.fullName }}</p>
-                  <p class="email">{{ item.email }}</p>
-                </div>
-              </div>
-              <Tag value="ACTIVE" severity="success" rounded />
-            </div>
-            <p class="meta">
-              {{ item.activeCurriculumName ?? 'No active assignment' }}
-            </p>
-            <p v-if="item.totalTaskCount != null" class="meta">
-              {{ item.completedTaskCount ?? 0 }} / {{ item.totalTaskCount }} tasks completed
-            </p>
-          </button>
-        </div>
-      </aside>
-
-      <section class="report-panel card-shell">
-        <template v-if="!hasSelectedTrainee">
-          <Message severity="info" :closable="false">Select an active trainee from the left panel to view reports.</Message>
-        </template>
-
-        <template v-else>
-          <div class="report-head">
-            <div class="report-identity">
-              <Avatar :label="initials(selectedTrainee!.fullName)" shape="circle" size="large" />
-              <div class="report-head-main">
-                <h3>{{ selectedTrainee!.fullName }}</h3>
-                <p class="report-email">{{ selectedTrainee!.email }}</p>
-              </div>
-            </div>
-            <p class="active-only-note">MVP currently shows ACTIVE assignment only</p>
-          </div>
-
-          <div v-if="detailLoading" class="centered">
-            <ProgressSpinner stroke-width="3" animation-duration=".8s" style="width: 2.25rem; height: 2.25rem" />
-          </div>
-
-          <Message v-else-if="detailError" severity="error" :closable="false">{{ detailError }}</Message>
-
-          <template v-else-if="!activeAssignment">
-            <Message severity="info" :closable="false">
-              This trainee has no active assignment, so there are no active reports to show.
-            </Message>
-          </template>
-
-          <section v-else class="assignment-section">
-            <header class="assignment-head">
-              <div>
-                <p class="assignment-title">{{ activeAssignment!.curriculumName }}</p>
-                <p class="assignment-meta">
-                  Assigned {{ formatDate(activeAssignment!.assignedAt) }} · Status {{ activeAssignment!.status }}
-                </p>
-              </div>
-              <Tag value="ACTIVE" severity="info" rounded />
-            </header>
-
-            <div class="report-mode-tabs">
+        <article class="surface-card">
+          <div class="card-head">
+            <h4>Daily reports</h4>
+            <div class="daily-presets">
               <Button
-                label="Weekly report"
+                label="10 days"
                 size="small"
-                :severity="reportMode === 'weekly' ? undefined : 'secondary'"
-                :outlined="reportMode !== 'weekly'"
-                @click="reportMode = 'weekly'"
+                text
+                :class="{ 'is-active': dailyRangePreset === 'LAST_10_DAYS' }"
+                @click="dailyRangePreset = 'LAST_10_DAYS'"
               />
               <Button
-                label="Daily report"
+                label="1 month"
                 size="small"
-                :severity="reportMode === 'daily' ? undefined : 'secondary'"
-                :outlined="reportMode !== 'daily'"
-                @click="reportMode = 'daily'"
+                text
+                :class="{ 'is-active': dailyRangePreset === 'LAST_1_MONTH' }"
+                @click="dailyRangePreset = 'LAST_1_MONTH'"
+              />
+              <Button
+                label="All"
+                size="small"
+                text
+                :class="{ 'is-active': dailyRangePreset === 'ALL' }"
+                @click="dailyRangePreset = 'ALL'"
               />
             </div>
+          </div>
 
-            <article v-if="reportMode === 'weekly'" class="surface-card">
-              <div class="card-head">
-                <h4>Weekly reports</h4>
-                <select v-model="selectedWeekStart" class="week-select" :disabled="sortedWeeklySummaries.length === 0">
-                  <option v-for="item in sortedWeeklySummaries" :key="item.id" :value="item.weekStart">
-                    {{ item.weekStart }} - {{ item.weekEnd }}
-                  </option>
-                </select>
-              </div>
+          <p class="muted small">Showing {{ currentDailyRangeLabel }}.</p>
 
-              <p v-if="sortedWeeklySummaries.length === 0" class="muted small">
-                No weekly summary yet. Latest week will appear here once a summary is generated/reviewed.
-              </p>
-
-              <div v-else-if="selectedWeeklySummary" class="weekly-row">
-                <div class="weekly-head">
-                  <strong>{{ selectedWeeklySummary.weekStart }} - {{ selectedWeeklySummary.weekEnd }}</strong>
-                  <Tag
-                    :value="selectedWeeklySummary.reviewStatus"
-                    :severity="selectedWeeklySummary.reviewStatus === 'REVIEWED' ? 'success' : 'secondary'"
-                    rounded
+          <Message v-if="traineesError" severity="error" :closable="false">{{ traineesError }}</Message>
+          <p v-else-if="traineesLoading || dailyLoading" class="muted small">Loading daily reports...</p>
+          <Message v-else-if="dailyError" severity="error" :closable="false">{{ dailyError }}</Message>
+          <p v-else-if="dailyReportGroups.length === 0" class="muted small">No daily reports found for this range.</p>
+          <ul v-else class="day-group-list" :class="{ 'day-group-list--mobile': isMobileTable }">
+            <li
+              v-for="group in dailyReportGroups"
+              :key="group.reportDate"
+              class="day-group-card"
+              :class="{ 'day-group-card--active': isGroupExpanded(group.reportDate) }"
+            >
+              <button
+                type="button"
+                class="day-group-header"
+                :class="{ 'day-group-header--expanded': isGroupExpanded(group.reportDate) }"
+                @click="toggleGroup(group.reportDate)"
+              >
+                <div class="day-group-title">
+                  <i class="pi pi-envelope day-group-icon" />
+                  <strong>{{ group.reportDate }}</strong>
+                </div>
+                <div class="day-group-meta">
+                  <span class="day-group-count">{{ group.count }} report{{ group.count > 1 ? 's' : '' }}</span>
+                  <i
+                    class="pi pi-chevron-down day-group-chevron"
+                    :class="{ 'day-group-chevron--expanded': isGroupExpanded(group.reportDate) }"
                   />
                 </div>
-                <p class="weekly-meta">
-                  Grade: {{ selectedWeeklySummary.mentorGrade != null ? `${selectedWeeklySummary.mentorGrade}/10` : 'Not graded' }} ·
-                  {{ selectedWeeklySummary.finalizedAt ? 'Finalized' : 'Open' }}
-                </p>
-                <p class="weekly-feedback">{{ selectedWeeklySummary.mentorFeedback || 'No mentor feedback yet.' }}</p>
-                <p class="weekly-feedback">
-                  {{ selectedWeeklySummary.summaryText || 'No generated weekly summary text yet.' }}
-                </p>
-              </div>
-            </article>
-
-            <article v-else class="surface-card">
-              <div class="card-head">
-                <h4>Daily reports</h4>
-                <div class="daily-presets">
-                  <Button
-                    label="10 days"
-                    size="small"
-                    text
-                    :class="{ 'is-active': dailyRangePreset === 'LAST_10_DAYS' }"
-                    @click="dailyRangePreset = 'LAST_10_DAYS'"
-                  />
-                  <Button
-                    label="1 month"
-                    size="small"
-                    text
-                    :class="{ 'is-active': dailyRangePreset === 'LAST_1_MONTH' }"
-                    @click="dailyRangePreset = 'LAST_1_MONTH'"
-                  />
-                  <Button
-                    label="All"
-                    size="small"
-                    text
-                    :class="{ 'is-active': dailyRangePreset === 'ALL' }"
-                    @click="dailyRangePreset = 'ALL'"
-                  />
-                </div>
-              </div>
-
-              <p class="muted small">Showing {{ currentDailyRangeLabel }}.</p>
-              <p v-if="dailyLoading" class="muted small">Loading daily reports...</p>
-              <Message v-else-if="dailyError" severity="error" :closable="false">{{ dailyError }}</Message>
-              <p v-else-if="dailyReports.length === 0" class="muted small">No daily reports found for this range.</p>
-              <ul v-else-if="!isMobileTable" class="daily-list">
-                <li v-for="item in dailyReports" :key="item.id" class="daily-row">
-                  <div class="daily-row-head">
-                    <strong>{{ item.reportDate }}</strong>
-                    <div class="daily-row-actions">
-                      <Tag :value="item.status" :severity="item.status === 'SUBMITTED' ? 'info' : 'secondary'" rounded />
-                      <Button label="View details" size="small" text @click="openDailyDetail(item)" />
+              </button>
+              <div v-if="isGroupExpanded(group.reportDate)" class="day-group-body">
+                <ul class="daily-list">
+                  <li v-for="item in group.items" :key="item.id" class="daily-row">
+                    <div class="daily-row-head">
+                      <strong>{{ item.traineeFullName }}</strong>
+                      <div class="daily-row-actions">
+                        <Tag :value="item.status" :severity="item.status === 'SUBMITTED' ? 'info' : 'secondary'" rounded />
+                        <Button label="View details" size="small" text @click="openDailyDetail(item)" />
+                      </div>
                     </div>
-                  </div>
-                  <p class="daily-row-meta">
-                    <span class="daily-meta-chip">{{ item.fresherLabel }} · Day {{ item.trainingDayIndex }}</span>
-                  </p>
-                  <p class="daily-text" :class="{ 'daily-text--expanded': isWhatDoneExpanded(item.id) }">
-                    {{ resolvedWhatDone(item) }}
-                  </p>
-                  <button
-                    v-if="shouldShowWhatDoneToggle(item)"
-                    type="button"
-                    class="daily-text-toggle"
-                    @click="toggleWhatDone(item.id)"
-                  >
-                    {{ isWhatDoneExpanded(item.id) ? 'See less' : 'See more' }}
-                  </button>
-                </li>
-              </ul>
-              <ul v-else class="mobile-daily-list">
-                <li v-for="item in dailyReports" :key="item.id" class="mobile-daily-card">
-                  <div class="mobile-daily-head">
-                    <strong>{{ item.reportDate }}</strong>
-                    <Tag :value="item.status" :severity="item.status === 'SUBMITTED' ? 'info' : 'secondary'" rounded />
-                  </div>
-                  <p class="mobile-daily-meta">
-                    <span class="daily-meta-chip">{{ item.fresherLabel }} · Training day {{ item.trainingDayIndex }}</span>
-                  </p>
-                  <p class="mobile-daily-text" :class="{ 'mobile-daily-text--expanded': isWhatDoneExpanded(item.id) }">
-                    {{ resolvedWhatDone(item) }}
-                  </p>
-                  <button
-                    v-if="shouldShowWhatDoneToggle(item)"
-                    type="button"
-                    class="daily-text-toggle"
-                    @click="toggleWhatDone(item.id)"
-                  >
-                    {{ isWhatDoneExpanded(item.id) ? 'See less' : 'See more' }}
-                  </button>
-                  <div class="mobile-daily-actions">
-                    <Button label="View details" size="small" text @click="openDailyDetail(item)" />
-                  </div>
-                </li>
-              </ul>
-            </article>
-          </section>
-        </template>
+                    <p class="daily-row-meta">
+                      <span class="daily-meta-chip">{{ item.traineeEmail }}</span>
+                    </p>
+                    <p class="daily-row-meta">
+                      <span class="daily-meta-chip">{{ item.fresherLabel }} · Training day {{ item.trainingDayIndex }} · {{ item.assignmentName }}</span>
+                    </p>
+                  </li>
+                </ul>
+              </div>
+            </li>
+          </ul>
+        </article>
+
       </section>
     </section>
 
@@ -641,16 +510,16 @@ watch(dailyReports, (items) => {
 
 .reports-layout {
   display: grid;
-  grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 1rem;
   align-items: start;
 }
 
 .card-shell {
-  background: var(--ui-surface);
-  border: 1px solid var(--ui-border);
+  background: linear-gradient(165deg, #ffffff 0%, color-mix(in srgb, #ffffff 90%, var(--ui-accent-2-soft)) 100%);
+  border: 1px solid color-mix(in srgb, var(--ui-accent-2) 14%, var(--ui-border));
   border-radius: var(--ui-radius-lg);
-  box-shadow: var(--ui-shadow-md);
+  box-shadow: 0 12px 24px -18px color-mix(in srgb, var(--ui-accent-2) 24%, transparent), var(--ui-shadow-md);
   padding: 1rem;
 }
 
@@ -679,6 +548,20 @@ watch(dailyReports, (items) => {
 
 .search-field :deep(.p-inputtext) {
   padding-right: 2rem;
+  background: color-mix(in srgb, #ffffff 80%, var(--ui-accent-2-soft));
+  border-color: color-mix(in srgb, var(--ui-accent-2) 20%, var(--ui-border));
+  transition: border-color var(--ui-transition-fast), box-shadow var(--ui-transition-fast),
+    background-color var(--ui-transition-fast);
+}
+
+.search-field :deep(.p-inputtext:hover) {
+  border-color: color-mix(in srgb, var(--ui-accent-2) 30%, var(--ui-border));
+}
+
+.search-field :deep(.p-inputtext:focus) {
+  border-color: color-mix(in srgb, var(--ui-accent-2) 42%, var(--ui-border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-accent-2-soft) 65%, transparent);
+  background: #ffffff;
 }
 
 .clear-query-btn {
@@ -784,6 +667,7 @@ watch(dailyReports, (items) => {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  background: linear-gradient(180deg, color-mix(in srgb, #ffffff 92%, var(--ui-accent-2-soft)) 0%, #ffffff 100%);
 }
 
 .report-head {
@@ -792,6 +676,10 @@ watch(dailyReports, (items) => {
   gap: 0.65rem;
   align-items: center;
   flex-wrap: wrap;
+  border: 1px solid color-mix(in srgb, var(--ui-accent-2) 12%, var(--ui-border));
+  background: color-mix(in srgb, #ffffff 76%, var(--ui-accent-2-soft));
+  border-radius: 12px;
+  padding: 0.62rem 0.72rem;
 }
 
 .report-identity {
@@ -812,18 +700,19 @@ watch(dailyReports, (items) => {
 .report-email {
   margin: 0.15rem 0 0;
   font-size: 0.92rem;
-  color: var(--ui-text-secondary);
+  color: color-mix(in srgb, var(--ui-text-secondary) 92%, var(--ui-accent-deep));
   font-weight: 500;
 }
 
 .active-only-note {
   margin: 0;
-  font-size: 0.78rem;
-  color: var(--ui-warn);
-  padding: 0.25rem 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--ui-warn) 86%, var(--ui-accent-deep));
+  padding: 0.3rem 0.58rem;
   border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--ui-highlight) 45%, transparent);
-  background: var(--ui-highlight-soft);
+  border: 1px solid color-mix(in srgb, var(--ui-highlight) 54%, transparent);
+  background: linear-gradient(135deg, var(--ui-highlight-soft), color-mix(in srgb, #ffffff 68%, var(--ui-highlight-soft)));
 }
 
 .assignment-section {
@@ -867,11 +756,11 @@ watch(dailyReports, (items) => {
 }
 
 .surface-card {
-  border: 1px solid var(--ui-border);
+  border: 1px solid color-mix(in srgb, var(--ui-accent-2) 12%, var(--ui-border));
   border-radius: 10px;
-  background: var(--ui-surface);
+  background: linear-gradient(180deg, #ffffff 0%, color-mix(in srgb, #ffffff 92%, var(--ui-accent-2-soft)) 100%);
   padding: 0.75rem;
-  box-shadow: var(--ui-shadow-xs);
+  box-shadow: 0 10px 22px -20px color-mix(in srgb, var(--ui-accent-2) 25%, transparent), var(--ui-shadow-xs);
 }
 
 .surface-card h4 {
@@ -950,6 +839,106 @@ watch(dailyReports, (items) => {
   display: flex;
   flex-direction: column;
   gap: 0.45rem;
+}
+
+.day-group-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.day-group-card {
+  border: 1px solid color-mix(in srgb, var(--ui-accent-2) 24%, var(--ui-border));
+  border-radius: 12px;
+  background: linear-gradient(150deg, #ffffff 0%, color-mix(in srgb, #ffffff 90%, var(--ui-accent-2-soft)) 100%);
+  box-shadow: var(--ui-shadow-xs);
+  overflow: hidden;
+  transition: border-color var(--ui-transition-fast), box-shadow var(--ui-transition-fast),
+    background-color var(--ui-transition-fast);
+}
+
+.day-group-card--active {
+  border-color: color-mix(in srgb, var(--ui-accent-2) 50%, var(--ui-border));
+  background: linear-gradient(150deg, #ffffff 0%, color-mix(in srgb, #ffffff 82%, var(--ui-accent-2-soft)) 100%);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent-2-soft) 72%, transparent), var(--ui-shadow-sm);
+}
+
+.day-group-card:focus-within {
+  border-color: color-mix(in srgb, var(--ui-accent-2) 55%, var(--ui-border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-focus-ring) 62%, transparent), var(--ui-shadow-sm);
+}
+
+.day-group-header {
+  width: 100%;
+  border: 0;
+  background: color-mix(in srgb, #ffffff 80%, var(--ui-accent-2-soft));
+  padding: 0.7rem 0.78rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  cursor: pointer;
+  transition: background-color var(--ui-transition-fast), box-shadow var(--ui-transition-fast);
+}
+
+.day-group-header:hover {
+  background: color-mix(in srgb, #ffffff 68%, var(--ui-accent-2-soft));
+}
+
+.day-group-header:focus-visible {
+  outline: 2px solid var(--ui-focus-ring);
+  outline-offset: -1px;
+}
+
+.day-group-header--expanded {
+  background: color-mix(in srgb, #ffffff 62%, var(--ui-accent-2-soft));
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--ui-accent-2) 28%, transparent);
+}
+
+.day-group-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--ui-accent-deep);
+}
+
+.day-group-icon {
+  color: var(--ui-accent-2);
+  font-size: 0.9rem;
+}
+
+.day-group-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.day-group-count {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--ui-accent-2) 34%, var(--ui-border));
+  padding: 0.16rem 0.5rem;
+  background: #ffffff;
+  color: color-mix(in srgb, var(--ui-accent-deep) 90%, var(--ui-text-primary));
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+
+.day-group-chevron {
+  color: var(--ui-accent-2);
+  transition: transform var(--ui-transition-fast);
+}
+
+.day-group-chevron--expanded {
+  transform: rotate(180deg);
+}
+
+.day-group-body {
+  padding: 0.62rem 0.62rem 0.68rem;
 }
 
 .mobile-daily-list {
@@ -1049,7 +1038,7 @@ watch(dailyReports, (items) => {
   border-color: color-mix(in srgb, var(--ui-accent-2) 24%, var(--ui-border));
   border-radius: 10px;
   padding: 0.62rem 0.68rem 0.66rem;
-  background: linear-gradient(135deg, #ffffff 0%, var(--ui-accent-2-soft) 100%);
+  background: linear-gradient(135deg, #ffffff 0%, color-mix(in srgb, #ffffff 84%, var(--ui-accent-2-soft)) 100%);
   position: relative;
 }
 
@@ -1078,7 +1067,7 @@ watch(dailyReports, (items) => {
 }
 
 .daily-row-head strong {
-  color: var(--ui-accent-deep);
+  color: color-mix(in srgb, var(--ui-accent-deep) 88%, var(--ui-accent-2));
 }
 
 .daily-row-actions {
@@ -1094,11 +1083,11 @@ watch(dailyReports, (items) => {
 .daily-meta-chip {
   display: inline-flex;
   align-items: center;
-  border: 1px solid color-mix(in srgb, var(--ui-accent-2) 34%, var(--ui-border));
+  border: 1px solid color-mix(in srgb, var(--ui-accent-2) 40%, var(--ui-border));
   border-radius: 999px;
-  padding: 0.16rem 0.5rem;
-  background: #ffffff;
-  color: var(--ui-accent-deep);
+  padding: 0.18rem 0.52rem;
+  background: color-mix(in srgb, #ffffff 78%, var(--ui-accent-2-soft));
+  color: color-mix(in srgb, var(--ui-accent-deep) 90%, var(--ui-text-primary));
   font-size: 0.76rem;
   font-weight: 600;
 }
@@ -1366,6 +1355,7 @@ watch(dailyReports, (items) => {
 
   .daily-row-head,
   .daily-row-actions,
+  .day-group-header,
   .daily-detail-hero,
   .resource-row {
     flex-direction: column;

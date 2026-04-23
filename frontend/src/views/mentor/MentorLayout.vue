@@ -111,10 +111,13 @@ function onSidebarAction(action: string): void {
 .layout {
   position: relative;
   min-height: 100vh;
+  height: 100vh;
   display: grid;
+  grid-template-rows: minmax(0, 1fr);
   grid-template-columns: 1fr;
   background: var(--ui-bg-gradient);
   isolation: isolate;
+  overflow: hidden;
 }
 
 .layout--docked {
@@ -124,14 +127,20 @@ function onSidebarAction(action: string): void {
 .content {
   padding: 1.35rem 1.5rem 2rem;
   min-width: 0;
+  min-height: 0;
   position: relative;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
 }
 
 .content-shell {
-  min-height: calc(100vh - 2.7rem);
+  min-height: 100%;
+  flex: 1;
+  width: 100%;
   padding: 1rem;
-  max-width: 1320px;
-  margin: 0 auto;
+  max-width: none;
+  margin: 0;
   border: 1px solid var(--ui-border-soft);
   border-radius: var(--ui-radius-xl);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.86) 0%, rgba(238, 244, 255, 0.88) 54%, rgba(255, 244, 240, 0.86) 100%);
@@ -180,6 +189,7 @@ function onSidebarAction(action: string): void {
     padding: 1rem;
   }
 }
+
 </style>
 
 <style>

@@ -86,9 +86,12 @@ function openChangePasswordDialog(): void {
 .layout {
   position: relative;
   min-height: 100vh;
-  display: block;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
   background: var(--ui-bg-gradient);
   isolation: isolate;
+  overflow: hidden;
 }
 
 .trainee-shell {
@@ -96,10 +99,12 @@ function openChangePasswordDialog(): void {
 }
 
 .workspace {
+  flex: 1;
   display: grid;
+  grid-template-rows: minmax(0, 1fr);
   grid-template-columns: minmax(0, 1fr);
   min-width: 0;
-  min-height: 100vh;
+  min-height: 0;
 }
 
 .layout--dock-rail .workspace {
@@ -109,26 +114,45 @@ function openChangePasswordDialog(): void {
 .content {
   padding: 1.35rem 1.5rem 2rem;
   min-width: 0;
+  min-height: 0;
   max-width: 1320px;
   margin: 0 auto;
   width: 100%;
-  border: 1px solid var(--ui-border-soft);
+  border: 1px solid color-mix(in srgb, var(--ui-accent) 34%, var(--ui-border-soft));
   border-radius: var(--ui-radius-xl);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.86) 0%, rgba(238, 244, 255, 0.88) 54%, rgba(255, 244, 240, 0.86) 100%);
-  box-shadow: var(--ui-shadow-sm);
+  background: linear-gradient(
+    180deg,
+    #ffffff 0%,
+    color-mix(in srgb, var(--ui-accent-soft) 22%, #ffffff) 40%,
+    color-mix(in srgb, var(--ui-accent-2-soft) 28%, #ffffff) 72%,
+    color-mix(in srgb, var(--ui-coral-soft) 26%, #ffffff) 100%
+  );
+  box-shadow:
+    0 16px 36px -22px rgba(36, 44, 70, 0.32),
+    0 6px 18px rgba(36, 44, 70, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.78);
   backdrop-filter: blur(2px);
+  overflow-y: auto;
 }
 
 .left-rail {
-  border-right: 1px solid var(--ui-border);
-  background: linear-gradient(180deg, #ffffff 0%, #f2f5ff 58%, #fff5f0 100%);
+  border-right: 1px solid color-mix(in srgb, var(--ui-accent-2) 24%, var(--ui-border));
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--ui-accent-soft-2) 58%, #ffffff) 0%,
+    color-mix(in srgb, var(--ui-accent-soft) 52%, #ffffff) 46%,
+    color-mix(in srgb, var(--ui-pink-soft) 48%, #ffffff) 100%
+  );
   padding: 1rem 0.9rem;
   overflow: auto;
   min-height: 0;
   position: sticky;
   top: 0;
   height: 100vh;
-  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.55), 6px 0 20px -16px rgba(47, 56, 80, 0.28);
+  box-shadow:
+    inset -1px 0 0 rgba(255, 255, 255, 0.72),
+    8px 0 26px -16px rgba(106, 13, 176, 0.34),
+    2px 0 10px -8px rgba(236, 72, 153, 0.28);
 }
 
 .fab-open {

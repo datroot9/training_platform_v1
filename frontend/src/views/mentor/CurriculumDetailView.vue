@@ -79,8 +79,21 @@ const hasMaterials = computed(() => (detail.value?.materials.length ?? 0) > 0)
 const hasTemplates = computed(() => (detail.value?.taskTemplates.length ?? 0) > 0)
 const publishReady = computed(() => hasMaterials.value && hasTemplates.value)
 
+function bySortOrderThenId(
+  a: { sortOrder: number; id: number },
+  b: { sortOrder: number; id: number },
+): number {
+  if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder
+  return a.id - b.id
+}
+
+/** Display order: sorted by API sortOrder so badges can show contiguous ranks 1..n. */
+const materialsSorted = computed(() => [...(detail.value?.materials ?? [])].sort(bySortOrderThenId))
+
+const taskTemplatesSorted = computed(() => [...(detail.value?.taskTemplates ?? [])].sort(bySortOrderThenId))
+
 const materialOptions = computed(() =>
-  (detail.value?.materials ?? []).map((item) => ({
+  materialsSorted.value.map((item) => ({
     label: item.fileName,
     value: item.id,
   })),
@@ -530,7 +543,7 @@ async function confirmCreateNewVersion(): Promise<void> {
                 <input type="file" accept="application/pdf" :disabled="isPublished" @change="onFileChange" />
               </label>
               <label>
-                Sort order (optional)
+                Order (optional)
                 <InputNumber v-model="uploadSortOrder" :min="0" :use-grouping="false" :disabled="isPublished" />
               </label>
               <Button
@@ -544,13 +557,19 @@ async function confirmCreateNewVersion(): Promise<void> {
 
             <DataTable
               v-if="!isMobileTable"
-              :value="detail.materials"
+              :value="materialsSorted"
               data-key="id"
               responsive-layout="scroll"
               class="p-datatable-sm detail-table"
             >
               <Column field="fileName" header="File name" style="min-width: 18rem" />
-              <Column field="sortOrder" header="Sort order" style="width: 8rem" header-class="mobile-hidden-col" body-class="mobile-hidden-col" />
+              <Column header="Order" style="width: 8rem" header-class="mobile-hidden-col" body-class="mobile-hidden-col">
+                <template #body="{ index }">
+                  <span class="order-badge order-badge--compact" :aria-label="`Order ${index + 1}`">{{
+                    index + 1
+                  }}</span>
+                </template>
+              </Column>
               <Column header="Uploaded" style="width: 12rem" header-class="mobile-hidden-col" body-class="mobile-hidden-col">
                 <template #body="{ data }">
                   {{ formatDate(data.createdAt) }}
@@ -569,12 +588,14 @@ async function confirmCreateNewVersion(): Promise<void> {
               </Column>
             </DataTable>
             <ul v-else-if="detail.materials.length > 0" class="mobile-card-list">
-              <li v-for="item in detail.materials" :key="item.id" class="mobile-card">
+              <li v-for="(item, idx) in materialsSorted" :key="item.id" class="mobile-ordered-row">
+                <div class="order-badge" :aria-label="`Order ${idx + 1}`">{{ idx + 1 }}</div>
+                <div class="mobile-card">
                 <p class="mobile-card-title">{{ item.fileName }}</p>
-                <p class="mobile-card-meta">Sort order: {{ item.sortOrder }}</p>
                 <p class="mobile-card-meta">Uploaded: {{ formatDate(item.createdAt) }}</p>
                 <div class="mobile-card-actions">
                   <Button icon="pi pi-trash" label="Delete" text severity="danger" :disabled="isPublished" @click="askDeleteMaterial(item)" />
+                </div>
                 </div>
               </li>
             </ul>
@@ -595,7 +616,7 @@ async function confirmCreateNewVersion(): Promise<void> {
 
             <DataTable
               v-if="!isMobileTable"
-              :value="detail.taskTemplates"
+              :value="taskTemplatesSorted"
               data-key="id"
               responsive-layout="scroll"
               class="p-datatable-sm detail-table"
@@ -606,7 +627,13 @@ async function confirmCreateNewVersion(): Promise<void> {
                   {{ data.estimatedDays ?? '-' }}
                 </template>
               </Column>
-              <Column field="sortOrder" header="Sort order" style="width: 8rem" header-class="mobile-hidden-col" body-class="mobile-hidden-col" />
+              <Column header="Order" style="width: 8rem" header-class="mobile-hidden-col" body-class="mobile-hidden-col">
+                <template #body="{ index }">
+                  <span class="order-badge order-badge--compact" :aria-label="`Order ${index + 1}`">{{
+                    index + 1
+                  }}</span>
+                </template>
+              </Column>
               <Column header="Material link" style="min-width: 12rem" header-class="mobile-hidden-col" body-class="mobile-hidden-col">
                 <template #body="{ data }">
                   {{ mapMaterialName(data.learningMaterialId) }}
@@ -628,14 +655,16 @@ async function confirmCreateNewVersion(): Promise<void> {
               </Column>
             </DataTable>
             <ul v-else-if="detail.taskTemplates.length > 0" class="mobile-card-list">
-              <li v-for="item in detail.taskTemplates" :key="item.id" class="mobile-card">
+              <li v-for="(item, idx) in taskTemplatesSorted" :key="item.id" class="mobile-ordered-row">
+                <div class="order-badge" :aria-label="`Order ${idx + 1}`">{{ idx + 1 }}</div>
+                <div class="mobile-card">
                 <p class="mobile-card-title">{{ item.title }}</p>
                 <p class="mobile-card-meta">Estimate: {{ item.estimatedDays ?? '-' }} day(s)</p>
-                <p class="mobile-card-meta">Order: {{ item.sortOrder }}</p>
                 <p class="mobile-card-meta">Material: {{ mapMaterialName(item.learningMaterialId) }}</p>
                 <div class="mobile-card-actions">
                   <Button icon="pi pi-pencil" label="Edit" text :disabled="isPublished" @click="openEditTemplate(item)" />
                   <Button icon="pi pi-trash" label="Delete" text severity="danger" :disabled="isPublished" @click="askDeleteTemplate(item)" />
+                </div>
                 </div>
               </li>
             </ul>
@@ -720,7 +749,7 @@ async function confirmCreateNewVersion(): Promise<void> {
         <InputNumber v-model="templateEstimatedDays" :min="1" :max="3650" :use-grouping="false" />
       </label>
       <label>
-        Sort order (optional)
+        Order (optional)
         <InputNumber v-model="templateSortOrder" :min="0" :use-grouping="false" />
       </label>
       <label>
@@ -979,6 +1008,42 @@ async function confirmCreateNewVersion(): Promise<void> {
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
+}
+
+.mobile-ordered-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+}
+
+.order-badge {
+  flex-shrink: 0;
+  box-sizing: border-box;
+  min-width: 2.5rem;
+  height: 2.5rem;
+  padding: 0 0.4rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--ui-text-primary);
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border-soft);
+  border-radius: 9999px;
+}
+
+.order-badge--compact {
+  min-width: 2rem;
+  height: 2rem;
+  font-size: 0.875rem;
+  padding: 0 0.3rem;
+}
+
+.mobile-ordered-row .mobile-card {
+  flex: 1;
+  min-width: 0;
 }
 
 .mobile-card {

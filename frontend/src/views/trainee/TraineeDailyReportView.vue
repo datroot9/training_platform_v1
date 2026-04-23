@@ -26,7 +26,6 @@ const traineeDisplayName = computed(() => {
 const assignmentId = computed(() => assignment.value?.id ?? null)
 
 const {
-  loading,
   submitting,
   error,
   weekStart,
@@ -178,10 +177,10 @@ function pickReportDate(date: string): void {
 }
 
 function nextTrainingDayForDate(date: string): number {
-  const previous = [...weekReports.value]
+  const sorted = [...weekReports.value]
     .filter((item) => item.reportDate < date)
     .sort((a, b) => a.reportDate.localeCompare(b.reportDate))
-    .at(-1)
+  const previous = sorted.length > 0 ? sorted[sorted.length - 1] : undefined
   const baseDay = previous?.trainingDayIndex
   if (typeof baseDay !== 'number' || !Number.isFinite(baseDay) || baseDay < 1) {
     return 1
@@ -381,9 +380,15 @@ watch(
     >
       <section class="daily-form">
         <header class="form-head dialog-head">
-          <div>
-            <h3>{{ formTitle }}</h3>
-            <p class="muted">Daily Report &lt; {{ selectedDateModel }} &gt;</p>
+          <div class="dialog-title-block">
+            <div class="dialog-title-row">
+              <i class="pi pi-file-edit dialog-title-icon" aria-hidden="true" />
+              <h3>{{ formTitle }}</h3>
+            </div>
+            <p class="muted dialog-meta-row">
+              <i class="pi pi-calendar" aria-hidden="true" />
+              <span>Daily report &lt; {{ selectedDateModel }} &gt;</span>
+            </p>
           </div>
           <div class="dialog-head-actions">
             <Tag :value="reportStatus ? reportStatus : 'NOT_SUBMITTED'" :severity="reportStatus ? 'info' : 'secondary'" rounded />
@@ -399,11 +404,17 @@ watch(
 
           <div class="form-grid">
             <label>
-              Fresher label
+              <span class="label-with-icon">
+                <i class="pi pi-user label-icon" aria-hidden="true" />
+                Fresher label
+              </span>
               <InputText v-model="fresherLabel" :disabled="!canEdit || submitting" />
             </label>
             <label>
-              Training day
+              <span class="label-with-icon">
+                <i class="pi pi-calendar label-icon" aria-hidden="true" />
+                Training day
+              </span>
               <input
                 :value="trainingDayIndex ?? ''"
                 type="number"
@@ -413,22 +424,34 @@ watch(
                 @input="trainingDayIndex = Number(($event.target as HTMLInputElement).value) || null"
               />
             </label>
-            <label class="full">
-              Work completed today
+            <label class="full section-input section-input--done">
+              <span class="label-with-icon">
+                <i class="pi pi-check-square label-icon" aria-hidden="true" />
+                Work completed today
+              </span>
               <Textarea v-model="whatDone" rows="3" auto-resize :disabled="!canEdit || submitting" />
             </label>
-            <label class="full">
-              Work planned for tomorrow
+            <label class="full section-input section-input--plan">
+              <span class="label-with-icon">
+                <i class="pi pi-arrow-right label-icon" aria-hidden="true" />
+                Work planned for tomorrow
+              </span>
               <Textarea v-model="plannedTomorrow" rows="3" auto-resize :disabled="!canEdit || submitting" />
             </label>
-            <label class="full">
-              Blockers
+            <label class="full section-input section-input--blockers">
+              <span class="label-with-icon">
+                <i class="pi pi-exclamation-triangle label-icon label-icon--warn" aria-hidden="true" />
+                Blockers
+              </span>
               <Textarea v-model="blockers" rows="2" auto-resize :disabled="!canEdit || submitting" />
             </label>
 
             <div class="full report-resources">
               <div class="report-resources-head">
-                <p>Proof resources</p>
+                <p class="section-title-with-icon">
+                  <i class="pi pi-paperclip label-icon" aria-hidden="true" />
+                  Proof resources
+                </p>
                 <Button
                   label="Add resource"
                   icon="pi pi-plus"
@@ -488,6 +511,7 @@ watch(
         <footer class="form-actions daily-form-footer">
           <Button
             label="Save draft"
+            icon="pi pi-save"
             severity="secondary"
             outlined
             :disabled="!canEdit || submitting"
@@ -496,12 +520,14 @@ watch(
           />
           <Button
             label="Submit report"
+            icon="pi pi-send"
             :disabled="!canEdit || submitting"
             :loading="submitting"
             @click="submitAndBack"
           />
           <Button
             label="Cancel"
+            icon="pi pi-times"
             text
             severity="secondary"
             :disabled="submitting"
@@ -685,6 +711,52 @@ watch(
   background: linear-gradient(180deg, #ffffff 0%, var(--ui-surface-tint) 62%, var(--ui-coral-soft) 100%);
 }
 
+.dialog-title-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.dialog-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.dialog-title-icon {
+  color: var(--ui-accent-2);
+  font-size: 1.05rem;
+}
+
+.dialog-meta-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.84rem;
+}
+
+.label-with-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42rem;
+  line-height: 1.2;
+}
+
+.label-icon {
+  color: var(--ui-accent-2);
+  font-size: 0.82rem;
+}
+
+.label-icon--warn {
+  color: var(--ui-warn);
+}
+
+.section-title-with-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42rem;
+}
+
 .dialog-head-actions {
   display: flex;
   align-items: center;
@@ -698,6 +770,7 @@ watch(
   padding: 0.95rem 1rem;
   overflow-y: auto;
   max-height: min(60vh, 620px);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.72) 0%, rgba(238, 244, 255, 0.62) 100%);
 }
 
 .form-grid {
@@ -715,6 +788,25 @@ watch(
 
 .form-grid .full {
   grid-column: 1 / -1;
+}
+
+.section-input {
+  border: 1px solid var(--ui-border-soft);
+  border-radius: 10px;
+  padding: 0.6rem;
+  box-shadow: var(--ui-shadow-xs);
+}
+
+.section-input--done {
+  background: linear-gradient(180deg, var(--ui-accent-2-soft) 0%, #ffffff 100%);
+}
+
+.section-input--plan {
+  background: linear-gradient(180deg, var(--ui-surface-tint) 0%, #ffffff 100%);
+}
+
+.section-input--blockers {
+  background: linear-gradient(180deg, var(--ui-warn-soft) 0%, #ffffff 100%);
 }
 
 .report-resources {
@@ -763,7 +855,7 @@ watch(
   border-top: 1px solid var(--ui-border);
   padding: 0.8rem 1rem 1rem;
   margin-top: auto;
-  background: var(--ui-surface);
+  background: linear-gradient(180deg, #ffffff 0%, var(--ui-surface-soft) 100%);
   flex-shrink: 0;
 }
 

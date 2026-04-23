@@ -5,7 +5,7 @@ import Button from 'primevue/button'
 import Message from 'primevue/message'
 import ProgressBar from 'primevue/progressbar'
 import ProgressSpinner from 'primevue/progressspinner'
-import { useRouter, type RouteLocationRaw } from 'vue-router'
+import { useRoute, useRouter, type RouteLocationRaw } from 'vue-router'
 import { injectTraineeAssignment } from '../../composables/useTraineeAssignment'
 import { useAuthStore } from '../../stores/auth'
 
@@ -19,6 +19,7 @@ const emit = defineEmits<{
 
 const auth = useAuthStore()
 const router = useRouter()
+const route = useRoute()
 const {
   assignment,
   tasks,
@@ -28,7 +29,6 @@ const {
   completedTaskCount,
   totalTaskCount,
   progressPercent,
-  load,
 } = injectTraineeAssignment()
 
 const email = computed(() => auth.user?.email ?? '')
@@ -60,6 +60,8 @@ const greeting = computed(() => {
 })
 
 const currentFocusTask = computed(() => tasks.value.find((task) => task.status !== 'DONE') ?? null)
+const assignmentLinkActive = computed(() => route.name === 'trainee-assignment')
+const dailyReportLinkActive = computed(() => route.name === 'trainee-daily-report')
 
 function go(to: RouteLocationRaw): void {
   void router.push(to)
@@ -142,17 +144,19 @@ function onOpenChangePassword(): void {
         <Button
           label="My assignment"
           icon="pi pi-bookmark"
-          class="w-full primary-link-btn"
-          outlined
+          :class="['w-full', 'link-btn', assignmentLinkActive ? 'link-btn--active' : 'link-btn--idle']"
+          :outlined="!assignmentLinkActive"
           severity="secondary"
+          :aria-current="assignmentLinkActive ? 'page' : undefined"
           @click="go({ name: 'trainee-assignment' })"
         />
         <Button
           label="Daily report"
           icon="pi pi-calendar"
-          class="w-full primary-link-btn"
-          outlined
+          :class="['w-full', 'link-btn', dailyReportLinkActive ? 'link-btn--active' : 'link-btn--idle']"
+          :outlined="!dailyReportLinkActive"
           severity="secondary"
+          :aria-current="dailyReportLinkActive ? 'page' : undefined"
           @click="go({ name: 'trainee-daily-report' })"
         />
         <Button
@@ -170,10 +174,9 @@ function onOpenChangePassword(): void {
         class="w-full logout-btn"
         severity="danger"
         text
+        size="large"
         @click="onLogout"
       />
-
-      <Button label="Refresh status" icon="pi pi-refresh" class="w-full refresh" text size="small" @click="load()" />
     </template>
   </div>
 </template>
@@ -182,20 +185,21 @@ function onOpenChangePassword(): void {
 .rail-inner {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.9rem;
   height: 100%;
 }
 
 .card {
-  border: 1px solid var(--ui-border-soft);
+  border: 1px solid color-mix(in srgb, var(--ui-accent) 18%, var(--ui-border-soft));
   border-radius: var(--ui-radius-md);
-  background: var(--ui-surface);
+  background: linear-gradient(180deg, #ffffff 0%, color-mix(in srgb, var(--ui-accent-soft) 34%, #ffffff) 100%);
   box-shadow: var(--ui-shadow-xs);
 }
 
 .profile-block {
   text-align: center;
   padding: 0.85rem 0.85rem 0.95rem;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--ui-accent-soft) 75%, #ffffff) 0%, #ffffff 55%, color-mix(in srgb, var(--ui-pink-soft) 70%, #ffffff) 100%);
 }
 
 .donut-wrap {
@@ -210,6 +214,7 @@ function onOpenChangePassword(): void {
   border-radius: 50%;
   position: relative;
   padding: 8px;
+  box-shadow: 0 8px 20px -14px rgba(106, 13, 176, 0.46);
 }
 
 .donut-hole {
@@ -232,7 +237,7 @@ function onOpenChangePassword(): void {
   margin: 0;
   font-size: 1.05rem;
   font-weight: 700;
-  color: var(--ui-heading);
+  color: color-mix(in srgb, var(--ui-accent-deep) 88%, #111111);
 }
 
 .sub {
@@ -254,15 +259,17 @@ function onOpenChangePassword(): void {
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--ui-text-secondary);
+  color: color-mix(in srgb, var(--ui-accent-deep) 72%, var(--ui-text-secondary));
 }
 
 .progress-block {
   padding: 0.85rem 1rem;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--ui-accent-soft-2) 58%, #ffffff) 0%, #ffffff 100%);
 }
 
 .focus-block {
   padding: 0.85rem 1rem;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--ui-coral-soft) 46%, #ffffff) 0%, #ffffff 100%);
 }
 
 .curriculum-name {
@@ -302,6 +309,7 @@ function onOpenChangePassword(): void {
   flex-direction: column;
   gap: 0.45rem;
   padding: 0.85rem 0.8rem 0.8rem;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--ui-pink-soft) 44%, #ffffff) 0%, #ffffff 100%);
 }
 
 .w-full {
@@ -311,11 +319,6 @@ function onOpenChangePassword(): void {
 
 .msg {
   margin: 0;
-}
-
-.refresh {
-  margin-top: 0;
-  opacity: 0.85;
 }
 
 .logout-btn {
@@ -330,28 +333,62 @@ function onOpenChangePassword(): void {
   border-radius: var(--ui-radius-md);
 }
 
-:deep(.primary-link-btn.p-button) {
-  border-color: var(--ui-border);
-  color: var(--ui-text-primary);
-  background: var(--ui-surface);
+:deep(.link-btn.p-button) {
+  min-height: 2.6rem;
+  border-radius: 12px;
+  justify-content: flex-start;
+  padding-inline: 0.85rem;
+  font-weight: 600;
 }
 
-:deep(.primary-link-btn.p-button:hover) {
-  background: var(--ui-accent-soft);
-  border-color: color-mix(in srgb, var(--ui-accent) 30%, var(--ui-border));
+:deep(.link-btn--active.p-button) {
+  border-color: color-mix(in srgb, var(--ui-accent) 40%, #ffffff);
+  color: #ffffff;
+  background: linear-gradient(145deg, var(--tp-purple-500) 0%, var(--tp-purple-600) 55%, var(--tp-pink-600) 100%);
+  box-shadow: 0 8px 18px -12px rgba(106, 13, 176, 0.72);
+}
+
+:deep(.link-btn--active.p-button:hover) {
+  background: linear-gradient(145deg, var(--tp-purple-600) 0%, var(--tp-purple-700) 60%, var(--tp-pink-600) 100%);
+  border-color: color-mix(in srgb, var(--ui-accent-strong) 72%, #ffffff);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+:deep(.link-btn--idle.p-button) {
+  border-color: color-mix(in srgb, var(--ui-border) 80%, #ffffff);
+  color: color-mix(in srgb, var(--ui-text-primary) 86%, var(--ui-accent-deep));
+  background: color-mix(in srgb, #ffffff 84%, var(--ui-accent-soft));
+}
+
+:deep(.link-btn--idle.p-button:hover) {
+  border-color: color-mix(in srgb, var(--ui-accent-2) 38%, var(--ui-border));
+  background: color-mix(in srgb, var(--ui-accent-soft) 62%, #ffffff);
   color: var(--ui-accent-deep);
 }
 
 :deep(.secondary-link-btn.p-button) {
-  color: var(--ui-text-secondary);
+  color: var(--ui-accent-deep);
+  background: color-mix(in srgb, var(--ui-accent-soft) 58%, #ffffff);
+  border-radius: 999px;
 }
 
 :deep(.secondary-link-btn.p-button:hover) {
-  background: var(--ui-accent-soft);
+  background: color-mix(in srgb, var(--ui-accent-soft-2) 72%, #ffffff);
   color: var(--ui-accent-deep);
 }
 
 :deep(.logout-btn.p-button) {
   border-radius: 999px;
+  min-height: 2.75rem;
+  padding-inline: 0.95rem;
+  font-weight: 700;
+  justify-content: center;
+  color: color-mix(in srgb, var(--ui-danger) 84%, #7f1d1d);
+  background: color-mix(in srgb, var(--ui-danger-soft) 72%, #ffffff);
+}
+
+:deep(.logout-btn.p-button:hover) {
+  background: color-mix(in srgb, var(--ui-danger-soft) 92%, #ffffff);
 }
 </style>
