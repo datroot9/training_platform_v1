@@ -18,7 +18,6 @@ import com.example.training_platform.auth.AuthenticatedUser;
 import com.example.training_platform.auth.JwtService;
 import com.example.training_platform.common.ApiExceptionHandler;
 import com.example.training_platform.reporting.dto.DailyReportResponse;
-import com.example.training_platform.reporting.dto.WeeklySummaryGenerationPlaceholderResponse;
 import com.example.training_platform.reporting.dto.WeeklySummaryResponse;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -55,6 +54,8 @@ class MentorReportingControllerTest {
                 ASSIGNMENT_ID,
                 LocalDate.of(2025, 1, 6),
                 LocalDate.of(2025, 1, 12),
+                List.of("Done A"),
+                List.of("Blocked A"),
                 "t",
                 null,
                 null,
@@ -118,6 +119,8 @@ class MentorReportingControllerTest {
                 ASSIGNMENT_ID,
                 LocalDate.of(2025, 1, 6),
                 LocalDate.of(2025, 1, 12),
+                List.of("Done B"),
+                List.of(),
                 "t",
                 null,
                 null,
@@ -156,20 +159,46 @@ class MentorReportingControllerTest {
     }
 
     @Test
-    void generateWeeklySummaryPlaceholderReturnsEnvelope() throws Exception {
-        var placeholder = new WeeklySummaryGenerationPlaceholderResponse("COMING_SOON", "Soon");
-        when(reportingService.generateWeeklySummaryPlaceholder(5L, TRAINEE_ID, ASSIGNMENT_ID))
-                .thenReturn(placeholder);
+    void generateWeeklySummaryReturnsEnvelope() throws Exception {
+        WeeklySummaryResponse generated = new WeeklySummaryResponse(
+                55L,
+                ASSIGNMENT_ID,
+                LocalDate.of(2025, 1, 6),
+                LocalDate.of(2025, 1, 12),
+                List.of("Done C"),
+                List.of("Blocked C"),
+                "Weekly summary",
+                0.8,
+                2.5,
+                "PENDING",
+                null,
+                null,
+                null,
+                null,
+                LocalDateTime.now()
+        );
+        when(reportingService.generateWeeklySummaryForMentor(
+                eq(5L),
+                eq(TRAINEE_ID),
+                eq(ASSIGNMENT_ID),
+                eq(LocalDate.of(2025, 1, 6))
+        )).thenReturn(generated);
 
         mockMvc.perform(post("/api/mentor/trainees/{tid}/assignments/{aid}/weekly-summaries/generate",
                         TRAINEE_ID, ASSIGNMENT_ID)
+                        .param("weekStart", "2025-01-06")
                         .principal(auth(5L, "m@local", "MENTOR")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.message").value("Weekly generation placeholder"))
-                .andExpect(jsonPath("$.data.status").value("COMING_SOON"));
+                .andExpect(jsonPath("$.message").value("Weekly summary generated"))
+                .andExpect(jsonPath("$.data.id").value(55));
 
-        verify(reportingService).generateWeeklySummaryPlaceholder(5L, TRAINEE_ID, ASSIGNMENT_ID);
+        verify(reportingService).generateWeeklySummaryForMentor(
+                5L,
+                TRAINEE_ID,
+                ASSIGNMENT_ID,
+                LocalDate.of(2025, 1, 6)
+        );
     }
 
     private static Authentication auth(Long userId, String email, String role) {

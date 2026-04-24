@@ -1,4 +1,4 @@
-import { computed, ref, watch, type Ref } from 'vue'
+import { computed, ref, unref, watch, type MaybeRef, type Ref } from 'vue'
 import { ApiError } from '../api/client'
 import * as traineeApi from '../api/modules/trainee'
 import type {
@@ -27,6 +27,8 @@ function startOfWeek(date: Date): Date {
 export function useTraineeDailyReport(
   assignmentId: Ref<number | null>,
   defaultDisplayName: Ref<string>,
+  /** When true (e.g. viewing a cancelled past curriculum), drafts cannot be edited or submitted. */
+  historicalReadOnly?: MaybeRef<boolean>,
 ) {
   const loading = ref(false)
   const submitting = ref(false)
@@ -56,7 +58,10 @@ export function useTraineeDailyReport(
     }),
   )
 
-  const canEdit = computed(() => !isWeekLocked.value)
+  const canEdit = computed(() => {
+    const readOnlyPast = historicalReadOnly !== undefined ? unref(historicalReadOnly) : false
+    return !readOnlyPast && !isWeekLocked.value
+  })
 
   function defaultResources(): DailyReportResourceInput[] {
     return [
@@ -116,6 +121,34 @@ export function useTraineeDailyReport(
       ])
       weekReports.value = reports
       weeklySummaries.value = summaries
+      const existing = reports.find((item) => item.reportDate === selectedDateIso.value)
+      if (existing) {
+        fillFromReport(existing)
+      } else {
+        resetForm()
+      }
+    } catch (e) {
+      error.value = e instanceof ApiError ? e.message : 'Could not load daily report data'
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function loadAllReports(filters?: {
+    assignmentId?: number | null
+    fromDate?: string | Date | null
+    toDate?: string | Date | null
+  }): Promise<void> {
+    loading.value = true
+    error.value = ''
+    try {
+      const reports = await traineeApi.listDailyReports({
+        assignmentId: filters?.assignmentId ?? null,
+        fromDate: filters?.fromDate ?? null,
+        toDate: filters?.toDate ?? null,
+      })
+      weekReports.value = reports
+      weeklySummaries.value = []
       const existing = reports.find((item) => item.reportDate === selectedDateIso.value)
       if (existing) {
         fillFromReport(existing)
@@ -215,6 +248,7 @@ export function useTraineeDailyReport(
     resources,
     taskHours,
     loadWeek,
+    loadAllReports,
     saveDraft,
     submit,
   }

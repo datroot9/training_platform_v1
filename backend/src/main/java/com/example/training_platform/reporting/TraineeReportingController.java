@@ -27,7 +27,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 @RestController
-@RequestMapping("/api/trainee/assignments/{assignmentId}")
+@RequestMapping("/api/trainee")
 @SecurityRequirement(name = "bearerAuth")
 @Tag(name = "Trainee reports", description = "Create daily reports and view weekly summaries")
 public class TraineeReportingController {
@@ -39,6 +39,28 @@ public class TraineeReportingController {
     }
 
     @GetMapping("/daily-reports")
+    @Operation(summary = "List trainee daily reports across assignments with optional filters")
+    public ResponseEntity<ApiResponse<List<DailyReportResponse>>> listAllDailyReports(
+            Authentication authentication,
+            @RequestParam(value = "assignmentId", required = false) Long assignmentId,
+            @RequestParam(value = "fromDate", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate fromDate,
+            @RequestParam(value = "toDate", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate toDate
+    ) {
+        AuthenticatedUser current = (AuthenticatedUser) authentication.getPrincipal();
+        List<DailyReportResponse> data = reportingService.listDailyReportsForTrainee(
+                current.userId(),
+                assignmentId,
+                fromDate,
+                toDate
+        );
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Daily reports fetched", data));
+    }
+
+    @GetMapping("/assignments/{assignmentId}/daily-reports")
     @Operation(summary = "List daily reports in a week")
     public ResponseEntity<ApiResponse<List<DailyReportResponse>>> listDailyReportsByWeek(
             Authentication authentication,
@@ -52,7 +74,7 @@ public class TraineeReportingController {
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Daily reports fetched", data));
     }
 
-    @GetMapping("/daily-reports/{reportDate}")
+    @GetMapping("/assignments/{assignmentId}/daily-reports/{reportDate}")
     @Operation(summary = "Get daily report by date")
     public ResponseEntity<ApiResponse<DailyReportResponse>> getDailyReport(
             Authentication authentication,
@@ -67,7 +89,7 @@ public class TraineeReportingController {
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Daily report fetched", data));
     }
 
-    @PutMapping("/daily-reports/{reportDate}")
+    @PutMapping("/assignments/{assignmentId}/daily-reports/{reportDate}")
     @Operation(summary = "Save daily report as draft")
     public ResponseEntity<ApiResponse<DailyReportResponse>> saveDailyReportDraft(
             Authentication authentication,
@@ -87,7 +109,7 @@ public class TraineeReportingController {
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Daily report draft saved", data));
     }
 
-    @PostMapping("/daily-reports/{reportDate}/submit")
+    @PostMapping("/assignments/{assignmentId}/daily-reports/{reportDate}/submit")
     @Operation(summary = "Submit daily report")
     public ResponseEntity<ApiResponse<DailyReportResponse>> submitDailyReport(
             Authentication authentication,
@@ -107,7 +129,7 @@ public class TraineeReportingController {
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Daily report submitted", data));
     }
 
-    @GetMapping("/weekly-summaries")
+    @GetMapping("/assignments/{assignmentId}/weekly-summaries")
     @Operation(summary = "List weekly summaries for assignment")
     public ResponseEntity<ApiResponse<List<WeeklySummaryResponse>>> listWeeklySummaries(
             Authentication authentication,

@@ -4,20 +4,27 @@ import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
 import IconField from 'primevue/iconfield'
 import InputIcon from 'primevue/inputicon'
+import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
 import Message from 'primevue/message'
 import Tag from 'primevue/tag'
+import Textarea from 'primevue/textarea'
+import { useToast } from 'primevue/usetoast'
 import { ApiError } from '../../api/client'
 import * as mentorApi from '../../api/modules/mentor'
 import { useMediaQuery } from '../../composables/useMediaQuery'
-import type { DailyReportResponse, TraineeResponse } from '../../api/types'
+import type { DailyReportResponse, TraineeResponse, WeeklySummaryResponse } from '../../api/types'
 import PageHeader from '../../components/layout/PageHeader.vue'
+
+const toast = useToast()
 
 const query = ref('')
 const trainees = ref<TraineeResponse[]>([])
 const traineesLoading = ref(false)
 const traineesError = ref('')
 type DailyRangePreset = 'LAST_10_DAYS' | 'LAST_1_MONTH' | 'CUSTOM'
+type ReportViewMode = 'DAILY' | 'WEEKLY'
+const reportViewMode = ref<ReportViewMode>('DAILY')
 const dailyRangePreset = ref<DailyRangePreset>('LAST_10_DAYS')
 const customFromDate = ref('')
 const customToDate = ref('')
@@ -33,6 +40,18 @@ type DailyReportGroup = {
   items: InboxDailyReport[]
   count: number
 }
+type InboxWeeklySummary = WeeklySummaryResponse & {
+  traineeId: number
+  traineeFullName: string
+  traineeEmail: string
+  assignmentName: string
+}
+type WeeklySummaryGroup = {
+  weekStart: string
+  weekEnd: string
+  items: InboxWeeklySummary[]
+  count: number
+}
 const dailyReports = ref<InboxDailyReport[]>([])
 const dailyLoading = ref(false)
 const dailyError = ref('')
@@ -40,6 +59,18 @@ const dailyDetailVisible = ref(false)
 const dailyDetailItem = ref<InboxDailyReport | null>(null)
 const expandedGroupDates = ref<string[]>([])
 let dailyRequestVersion = 0
+const weeklySummaries = ref<InboxWeeklySummary[]>([])
+const weeklyLoading = ref(false)
+const weeklyError = ref('')
+const expandedWeekStarts = ref<string[]>([])
+let weeklyRequestVersion = 0
+const weeklyLoadedOnce = ref(false)
+const editingWeeklyId = ref<number | null>(null)
+const weeklyEditGrade = ref<number | null>(null)
+const weeklyEditFeedback = ref('')
+const weeklyEditFinalize = ref(true)
+const weeklyReviewSaving = ref(false)
+const weeklyReviewError = ref('')
 
 const hasSearchQuery = computed(() => query.value.trim().length > 0)
 const isMobileTable = useMediaQuery('(max-width: 900px)')
@@ -75,6 +106,39 @@ const dailyReportGroups = computed<DailyReportGroup[]>(() => {
     count: items.length,
   }))
 })
+const filteredWeeklySummaries = computed(() => {
+  const q = query.value.trim().toLowerCase()
+  if (!q) return weeklySummaries.value
+  return weeklySummaries.value.filter((item) => {
+    const keywords = [
+      item.traineeFullName,
+      item.traineeEmail,
+      item.assignmentName,
+      ...(item.accomplishments ?? []),
+      ...(item.difficulties ?? []),
+    ]
+      .join(' ')
+      .toLowerCase()
+    return keywords.includes(q)
+  })
+})
+const weeklySummaryGroups = computed<WeeklySummaryGroup[]>(() => {
+  const groups = new Map<string, InboxWeeklySummary[]>()
+  for (const item of filteredWeeklySummaries.value) {
+    const rows = groups.get(item.weekStart)
+    if (rows) {
+      rows.push(item)
+    } else {
+      groups.set(item.weekStart, [item])
+    }
+  }
+  return Array.from(groups.entries()).map(([weekStart, items]) => ({
+    weekStart,
+    weekEnd: items[0]?.weekEnd ?? weekStart,
+    items,
+    count: items.length,
+  }))
+})
 
 function isGroupExpanded(dateKey: string): boolean {
   return expandedGroupDates.value.includes(dateKey)
@@ -86,6 +150,38 @@ function toggleGroup(dateKey: string): void {
     return
   }
   expandedGroupDates.value = [...expandedGroupDates.value, dateKey]
+}
+
+function isWeeklyGroupExpanded(weekStart: string): boolean {
+  return expandedWeekStarts.value.includes(weekStart)
+}
+
+function toggleWeeklyGroup(weekStart: string): void {
+  if (isWeeklyGroupExpanded(weekStart)) {
+    expandedWeekStarts.value = expandedWeekStarts.value.filter((key) => key !== weekStart)
+    return
+  }
+  expandedWeekStarts.value = [...expandedWeekStarts.value, weekStart]
+}
+
+function normalizedWeeklyItems(items: string[] | null | undefined): string[] {
+  return (items ?? []).map((item) => item.trim()).filter((item) => item.length > 0)
+}
+
+function startWeeklyReviewEditor(item: InboxWeeklySummary): void {
+  editingWeeklyId.value = item.id
+  weeklyEditGrade.value = item.mentorGrade
+  weeklyEditFeedback.value = (item.mentorFeedback ?? '').trim()
+  weeklyEditFinalize.value = Boolean(item.finalizedAt)
+  weeklyReviewError.value = ''
+}
+
+function cancelWeeklyReviewEditor(): void {
+  editingWeeklyId.value = null
+  weeklyEditGrade.value = null
+  weeklyEditFeedback.value = ''
+  weeklyEditFinalize.value = true
+  weeklyReviewError.value = ''
 }
 
 function formatDateTime(value?: string | null): string {
@@ -239,24 +335,29 @@ async function loadDailyReports(): Promise<void> {
   try {
     const allReports = await Promise.all(
       trainees.value.map(async (trainee) => {
-        const assignment = await mentorApi.getTraineeActiveAssignmentOrNull(trainee.id)
-        if (!assignment) return [] as InboxDailyReport[]
+        const assignments = await mentorApi.listTraineeAssignments(trainee.id)
+        if (assignments.length === 0) return [] as InboxDailyReport[]
         const range = calculateDailyRange(dailyRangePreset.value)
-        const reports = await mentorApi.listDailyReportsForTraineeByRange(
-          trainee.id,
-          assignment.id,
-          range.fromDate,
-          range.toDate,
-        )
-        return reports.map(
-          (item): InboxDailyReport => ({
-            ...item,
-            traineeId: trainee.id,
-            traineeFullName: trainee.fullName,
-            traineeEmail: trainee.email,
-            assignmentName: assignment.curriculumName,
+        const perAssignment = await Promise.all(
+          assignments.map(async (assignment) => {
+            const reports = await mentorApi.listDailyReportsForTraineeByRange(
+              trainee.id,
+              assignment.id,
+              range.fromDate,
+              range.toDate,
+            )
+            return reports.map(
+              (item): InboxDailyReport => ({
+                ...item,
+                traineeId: trainee.id,
+                traineeFullName: trainee.fullName,
+                traineeEmail: trainee.email,
+                assignmentName: assignment.curriculumName,
+              }),
+            )
           }),
         )
+        return perAssignment.flat()
       }),
     )
     if (requestVersion !== dailyRequestVersion) return
@@ -285,6 +386,89 @@ async function loadDailyReports(): Promise<void> {
     if (requestVersion === dailyRequestVersion) {
       dailyLoading.value = false
     }
+  }
+}
+
+async function loadWeeklySummaries(options: { force?: boolean } = {}): Promise<void> {
+  if (weeklyLoadedOnce.value && !options.force) return
+  weeklyRequestVersion += 1
+  const requestVersion = weeklyRequestVersion
+  weeklySummaries.value = []
+  weeklyError.value = ''
+  if (trainees.value.length === 0) {
+    weeklyLoading.value = false
+    weeklyLoadedOnce.value = true
+    return
+  }
+
+  weeklyLoading.value = true
+  try {
+    const allWeekly = await Promise.all(
+      trainees.value.map(async (trainee) => {
+        const activeAssignment = await mentorApi.getTraineeActiveAssignmentOrNull(trainee.id)
+        if (!activeAssignment) return [] as InboxWeeklySummary[]
+        const summaries = await mentorApi.listWeeklySummariesForTrainee(trainee.id, activeAssignment.id)
+        return summaries.map(
+          (item): InboxWeeklySummary => ({
+            ...item,
+            traineeId: trainee.id,
+            traineeFullName: trainee.fullName,
+            traineeEmail: trainee.email,
+            assignmentName: activeAssignment.curriculumName,
+          }),
+        )
+      }),
+    )
+    if (requestVersion !== weeklyRequestVersion) return
+    weeklySummaries.value = allWeekly
+      .flat()
+      .sort((a, b) => {
+        const byWeek = b.weekStart.localeCompare(a.weekStart)
+        if (byWeek !== 0) return byWeek
+        return (b.generatedAt ?? '').localeCompare(a.generatedAt ?? '')
+      })
+    weeklyLoadedOnce.value = true
+  } catch (e) {
+    if (requestVersion !== weeklyRequestVersion) return
+    weeklyError.value = e instanceof ApiError ? e.message : 'Failed to load weekly summaries'
+  } finally {
+    if (requestVersion === weeklyRequestVersion) {
+      weeklyLoading.value = false
+    }
+  }
+}
+
+async function saveWeeklyReview(item: InboxWeeklySummary): Promise<void> {
+  if (weeklyEditGrade.value == null || !weeklyEditFeedback.value.trim()) {
+    weeklyReviewError.value = 'Grade and feedback are required.'
+    return
+  }
+  weeklyReviewSaving.value = true
+  weeklyReviewError.value = ''
+  try {
+    await mentorApi.reviewWeeklySummary(item.traineeId, item.assignmentId, item.weekStart, {
+      mentorGrade: weeklyEditGrade.value,
+      mentorFeedback: weeklyEditFeedback.value.trim(),
+      finalizeWeek: weeklyEditFinalize.value,
+    })
+    await loadWeeklySummaries({ force: true })
+    toast.add({
+      severity: 'success',
+      summary: 'Weekly review saved',
+      detail: `Week ${item.weekStart} was reviewed successfully.`,
+      life: 2800,
+    })
+    cancelWeeklyReviewEditor()
+  } catch (e) {
+    weeklyReviewError.value = e instanceof ApiError ? e.message : 'Could not save weekly review'
+    toast.add({
+      severity: 'error',
+      summary: 'Save failed',
+      detail: weeklyReviewError.value,
+      life: 3600,
+    })
+  } finally {
+    weeklyReviewSaving.value = false
   }
 }
 
@@ -326,6 +510,17 @@ watch(dailyReportGroups, (groups) => {
   const valid = new Set(groups.map((group) => group.reportDate))
   expandedGroupDates.value = expandedGroupDates.value.filter((key) => valid.has(key))
 })
+
+watch(reportViewMode, (mode) => {
+  if (mode === 'WEEKLY') {
+    void loadWeeklySummaries()
+  }
+})
+
+watch(weeklySummaryGroups, (groups) => {
+  const valid = new Set(groups.map((group) => group.weekStart))
+  expandedWeekStarts.value = expandedWeekStarts.value.filter((key) => valid.has(key))
+})
 </script>
 
 <template>
@@ -352,45 +547,61 @@ watch(dailyReportGroups, (groups) => {
 
         <article class="surface-card">
           <div class="card-head">
-            <h4>Daily reports</h4>
+            <h4>{{ reportViewMode === 'DAILY' ? 'Daily reports' : 'Weekly summary' }}</h4>
             <div class="filter-controls">
-              <div class="daily-presets">
+              <div class="mode-switch">
+                <Button label="Daily reports" size="small" text :class="{ 'is-active': reportViewMode === 'DAILY' }" @click="reportViewMode = 'DAILY'" />
                 <Button
-                  label="10 days"
+                  label="Weekly summary"
                   size="small"
                   text
-                  :class="{ 'is-active': dailyRangePreset === 'LAST_10_DAYS' }"
-                  @click="applyPreset('LAST_10_DAYS')"
-                />
-                <Button
-                  label="1 month"
-                  size="small"
-                  text
-                  :class="{ 'is-active': dailyRangePreset === 'LAST_1_MONTH' }"
-                  @click="applyPreset('LAST_1_MONTH')"
+                  :class="{ 'is-active': reportViewMode === 'WEEKLY' }"
+                  @click="reportViewMode = 'WEEKLY'"
                 />
               </div>
-              <div class="range-inputs">
-                <label class="range-field">
-                  <span>From</span>
-                  <input v-model="customFromDate" type="date" @change="onCustomRangeChanged" />
-                </label>
-                <label class="range-field">
-                  <span>To</span>
-                  <input v-model="customToDate" type="date" @change="onCustomRangeChanged" />
-                </label>
+              <div v-if="reportViewMode === 'DAILY'" class="daily-filter-wrap">
+                <div class="daily-presets">
+                  <Button
+                    label="10 days"
+                    size="small"
+                    text
+                    :class="{ 'is-active': dailyRangePreset === 'LAST_10_DAYS' }"
+                    @click="applyPreset('LAST_10_DAYS')"
+                  />
+                  <Button
+                    label="1 month"
+                    size="small"
+                    text
+                    :class="{ 'is-active': dailyRangePreset === 'LAST_1_MONTH' }"
+                    @click="applyPreset('LAST_1_MONTH')"
+                  />
+                </div>
+                <div class="range-inputs">
+                  <label class="range-field">
+                    <span>From</span>
+                    <input v-model="customFromDate" type="date" @change="onCustomRangeChanged" />
+                  </label>
+                  <label class="range-field">
+                    <span>To</span>
+                    <input v-model="customToDate" type="date" @change="onCustomRangeChanged" />
+                  </label>
+                </div>
+              </div>
+              <div v-else class="weekly-toolbar">
+                <Button label="Refresh" size="small" text icon="pi pi-refresh" :loading="weeklyLoading" @click="loadWeeklySummaries({ force: true })" />
               </div>
             </div>
           </div>
 
-          <p class="muted small">Showing {{ currentDailyRangeLabel }}.</p>
-          <Message v-if="rangeValidationError" severity="warn" :closable="false">{{ rangeValidationError }}</Message>
+          <p v-if="reportViewMode === 'DAILY'" class="muted small">Showing {{ currentDailyRangeLabel }}.</p>
+          <p v-else class="muted small">Showing weekly summaries from active assignments.</p>
+          <Message v-if="reportViewMode === 'DAILY' && rangeValidationError" severity="warn" :closable="false">{{ rangeValidationError }}</Message>
 
           <Message v-if="traineesError" severity="error" :closable="false">{{ traineesError }}</Message>
-          <p v-else-if="traineesLoading || dailyLoading" class="muted small">Loading daily reports...</p>
-          <Message v-else-if="dailyError" severity="error" :closable="false">{{ dailyError }}</Message>
-          <p v-else-if="dailyReportGroups.length === 0" class="muted small">No daily reports found for this range.</p>
-          <ul v-else class="day-group-list" :class="{ 'day-group-list--mobile': isMobileTable }">
+          <p v-else-if="reportViewMode === 'DAILY' && (traineesLoading || dailyLoading)" class="muted small">Loading daily reports...</p>
+          <Message v-else-if="reportViewMode === 'DAILY' && dailyError" severity="error" :closable="false">{{ dailyError }}</Message>
+          <p v-else-if="reportViewMode === 'DAILY' && dailyReportGroups.length === 0" class="muted small">No daily reports found for this range.</p>
+          <ul v-else-if="reportViewMode === 'DAILY'" class="day-group-list" :class="{ 'day-group-list--mobile': isMobileTable }">
             <li
               v-for="group in dailyReportGroups"
               :key="group.reportDate"
@@ -431,6 +642,125 @@ watch(dailyReportGroups, (groups) => {
                     <p class="daily-row-meta">
                       <span class="daily-meta-chip">{{ item.fresherLabel }} · Training day {{ item.trainingDayIndex }} · {{ item.assignmentName }}</span>
                     </p>
+                  </li>
+                </ul>
+              </div>
+            </li>
+          </ul>
+
+          <p v-else-if="traineesLoading || weeklyLoading" class="muted small">Loading weekly summaries...</p>
+          <Message v-else-if="weeklyError" severity="error" :closable="false">{{ weeklyError }}</Message>
+          <p v-else-if="weeklySummaryGroups.length === 0" class="muted small">No weekly summaries found.</p>
+          <ul v-else class="day-group-list" :class="{ 'day-group-list--mobile': isMobileTable }">
+            <li
+              v-for="group in weeklySummaryGroups"
+              :key="group.weekStart"
+              class="day-group-card"
+              :class="{ 'day-group-card--active': isWeeklyGroupExpanded(group.weekStart) }"
+            >
+              <button
+                type="button"
+                class="day-group-header"
+                :class="{ 'day-group-header--expanded': isWeeklyGroupExpanded(group.weekStart) }"
+                @click="toggleWeeklyGroup(group.weekStart)"
+              >
+                <div class="day-group-title">
+                  <i class="pi pi-calendar day-group-icon" />
+                  <strong>{{ group.weekStart }} - {{ group.weekEnd }}</strong>
+                </div>
+                <div class="day-group-meta">
+                  <span class="day-group-count">{{ group.count }} {{ group.count > 1 ? 'summaries' : 'summary' }}</span>
+                  <i
+                    class="pi pi-chevron-down day-group-chevron"
+                    :class="{ 'day-group-chevron--expanded': isWeeklyGroupExpanded(group.weekStart) }"
+                  />
+                </div>
+              </button>
+              <div v-if="isWeeklyGroupExpanded(group.weekStart)" class="day-group-body">
+                <ul class="daily-list">
+                  <li v-for="item in group.items" :key="item.id" class="weekly-row">
+                    <div class="weekly-head">
+                      <strong><span class="weekly-head-label">Trainee:</span> {{ item.traineeFullName }}</strong>
+                      <div class="daily-row-actions">
+                        <Tag :value="item.reviewStatus" :severity="item.reviewStatus === 'REVIEWED' ? 'success' : 'secondary'" rounded />
+                        <Button
+                          :label="editingWeeklyId === item.id ? 'Editing...' : 'Review / Edit'"
+                          size="small"
+                          text
+                          :disabled="weeklyReviewSaving && editingWeeklyId === item.id"
+                          @click="startWeeklyReviewEditor(item)"
+                        />
+                      </div>
+                    </div>
+                    <p class="weekly-meta">
+                      <span class="weekly-meta-chip weekly-meta-chip--email">{{ item.traineeEmail }}</span>
+                      <span class="weekly-meta-chip weekly-meta-chip--assignment">{{ item.assignmentName }}</span>
+                      <span v-if="item.mentorGrade != null" class="weekly-meta-chip weekly-meta-chip--grade"
+                        >Grade: {{ item.mentorGrade }}/10</span
+                      >
+                    </p>
+                    <div class="weekly-sections">
+                      <div>
+                        <p class="weekly-section-title">What was accomplished</p>
+                        <ul v-if="normalizedWeeklyItems(item.accomplishments).length > 0" class="weekly-section-list">
+                          <li v-for="(line, idx) in normalizedWeeklyItems(item.accomplishments)" :key="`done-${item.id}-${idx}`">{{ line }}</li>
+                        </ul>
+                        <p v-else class="weekly-feedback">No work logged for this week.</p>
+                      </div>
+                      <div>
+                        <p class="weekly-section-title">Difficulties / blockers</p>
+                        <ul v-if="normalizedWeeklyItems(item.difficulties).length > 0" class="weekly-section-list">
+                          <li v-for="(line, idx) in normalizedWeeklyItems(item.difficulties)" :key="`diff-${item.id}-${idx}`">{{ line }}</li>
+                        </ul>
+                        <p v-else class="weekly-feedback">No difficulties noted for this week.</p>
+                      </div>
+                    </div>
+                    <div class="weekly-feedback-box">
+                      <p class="weekly-feedback-label">Mentor feedback</p>
+                      <p class="weekly-feedback">{{ item.mentorFeedback || 'No mentor feedback yet.' }}</p>
+                    </div>
+                    <div v-if="editingWeeklyId === item.id" class="weekly-review-editor">
+                      <Message v-if="weeklyReviewError" severity="error" :closable="false">{{ weeklyReviewError }}</Message>
+                      <div class="weekly-review-grid">
+                        <label>
+                          <span class="weekly-review-label"><i class="pi pi-star-fill" /> Grade (0 - 10)</span>
+                          <InputNumber
+                            :model-value="weeklyEditGrade"
+                            :min="0"
+                            :max="10"
+                            :min-fraction-digits="0"
+                            :max-fraction-digits="2"
+                            @update:model-value="weeklyEditGrade = $event as number | null"
+                          />
+                        </label>
+                        <label class="full">
+                          <span class="weekly-review-label"><i class="pi pi-comment" /> Feedback</span>
+                          <Textarea v-model="weeklyEditFeedback" rows="3" auto-resize />
+                        </label>
+                        <label class="checkbox">
+                          <i class="pi pi-lock" />
+                          <input v-model="weeklyEditFinalize" type="checkbox" />
+                          Finalize this week (lock trainee edits)
+                        </label>
+                      </div>
+                      <div class="weekly-review-actions">
+                        <Button
+                          label="Save review"
+                          icon="pi pi-check-circle"
+                          :loading="weeklyReviewSaving"
+                          :disabled="weeklyEditGrade == null || !weeklyEditFeedback.trim()"
+                          @click="saveWeeklyReview(item)"
+                        />
+                        <Button
+                          label="Cancel"
+                          icon="pi pi-times"
+                          severity="secondary"
+                          text
+                          :disabled="weeklyReviewSaving"
+                          @click="cancelWeeklyReviewEditor"
+                        />
+                      </div>
+                    </div>
                   </li>
                 </ul>
               </div>
@@ -824,6 +1154,36 @@ watch(dailyReportGroups, (groups) => {
   gap: 0.5rem;
 }
 
+.mode-switch {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--ui-border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.mode-switch :deep(.p-button) {
+  border-radius: 0;
+}
+
+.mode-switch :deep(.p-button.is-active) {
+  background: var(--ui-accent-2-soft);
+  color: var(--ui-accent-2);
+}
+
+.daily-filter-wrap {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.weekly-toolbar {
+  display: inline-flex;
+  align-items: center;
+}
+
 .week-select {
   border: 1px solid var(--ui-border);
   border-radius: 8px;
@@ -1123,17 +1483,29 @@ watch(dailyReportGroups, (groups) => {
 }
 
 .weekly-row {
-  border: 1px solid var(--ui-border-soft);
-  border-radius: 8px;
-  padding: 0.5rem 0.55rem;
-  background: var(--ui-surface);
+  border: 1px solid color-mix(in srgb, var(--ui-accent-2) 34%, var(--ui-border));
+  border-radius: 12px;
+  padding: 0.72rem 0.78rem;
+  background: linear-gradient(140deg, #ffffff 0%, color-mix(in srgb, #ffffff 84%, var(--ui-accent-2-soft)) 100%);
   box-shadow: var(--ui-shadow-xs);
   transition: border-color var(--ui-transition-fast), box-shadow var(--ui-transition-fast),
     transform var(--ui-transition-fast);
+  position: relative;
+}
+
+.weekly-row::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.7rem;
+  bottom: 0.7rem;
+  width: 3px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--ui-accent-2), var(--ui-coral));
 }
 .weekly-row:hover {
   transform: translateY(-1px);
-  border-color: color-mix(in srgb, var(--ui-accent-2) 26%, var(--ui-border));
+  border-color: color-mix(in srgb, var(--ui-accent-2) 52%, var(--ui-border));
   box-shadow: var(--ui-shadow-sm);
 }
 
@@ -1202,11 +1574,189 @@ watch(dailyReportGroups, (groups) => {
   align-items: center;
 }
 
+.weekly-head strong {
+  color: color-mix(in srgb, var(--ui-accent-deep) 88%, var(--ui-accent-2));
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.weekly-head-label {
+  color: color-mix(in srgb, var(--ui-accent-2) 78%, var(--ui-accent-deep));
+  font-weight: 800;
+  margin-right: 0.28rem;
+}
+
 .weekly-meta,
 .weekly-feedback {
-  margin: 0.25rem 0 0;
-  color: var(--ui-text-secondary);
+  margin: 0.36rem 0 0;
+  color: color-mix(in srgb, var(--ui-text-secondary) 90%, var(--ui-accent-deep));
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.weekly-feedback-box {
+  margin-top: 0.5rem;
+  padding: 0.48rem 0.62rem;
+  border: 1px solid color-mix(in srgb, var(--ui-accent-2) 30%, var(--ui-border-soft));
+  border-radius: 10px;
+  background: color-mix(in srgb, #ffffff 76%, var(--ui-accent-2-soft));
+}
+
+.weekly-feedback-label {
+  margin: 0;
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: color-mix(in srgb, var(--ui-accent-deep) 82%, var(--ui-accent-2));
+}
+
+.weekly-feedback-box .weekly-feedback {
+  margin: 0.18rem 0 0;
+  color: var(--ui-text-primary);
+  white-space: pre-wrap;
+}
+
+.weekly-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.weekly-meta-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.2rem 0.56rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  border: 1px solid transparent;
+}
+
+.weekly-meta-chip--email {
+  background: color-mix(in srgb, #ffffff 76%, var(--ui-accent-2-soft));
+  color: color-mix(in srgb, var(--ui-accent-deep) 85%, var(--ui-accent-2));
+  border-color: color-mix(in srgb, var(--ui-accent-2) 34%, var(--ui-border-soft));
+}
+
+.weekly-meta-chip--assignment {
+  background: color-mix(in srgb, #ffffff 72%, var(--ui-highlight-soft));
+  color: color-mix(in srgb, var(--ui-heading) 85%, var(--ui-accent-deep));
+  border-color: color-mix(in srgb, var(--ui-highlight) 36%, var(--ui-border-soft));
+}
+
+.weekly-meta-chip--grade {
+  background: color-mix(in srgb, #ffffff 78%, var(--ui-success-soft));
+  color: color-mix(in srgb, var(--ui-success) 88%, var(--ui-text-primary));
+  border-color: color-mix(in srgb, var(--ui-success) 36%, var(--ui-border-soft));
+}
+
+.weekly-sections {
+  margin-top: 0.5rem;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.weekly-section-title {
+  margin: 0 0 0.2rem;
+  color: color-mix(in srgb, var(--ui-accent-deep) 86%, var(--ui-accent-2));
   font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.weekly-section-list {
+  margin: 0;
+  padding: 0.42rem 0.58rem 0.42rem 1.15rem;
+  border: 1px solid color-mix(in srgb, var(--ui-accent-2) 28%, var(--ui-border-soft));
+  border-radius: 10px;
+  background: color-mix(in srgb, #ffffff 72%, var(--ui-accent-2-soft));
+  color: color-mix(in srgb, var(--ui-text-primary) 88%, var(--ui-accent-deep));
+  font-size: 0.83rem;
+  display: grid;
+  gap: 0.26rem;
+  line-height: 1.45;
+}
+
+.weekly-sections > div > .weekly-feedback {
+  margin: 0;
+  padding: 0.45rem 0.58rem;
+  border: 1px dashed color-mix(in srgb, var(--ui-border-soft) 80%, var(--ui-accent-2));
+  border-radius: 10px;
+  background: color-mix(in srgb, #ffffff 82%, var(--ui-accent-2-soft));
+}
+
+.weekly-review-editor {
+  margin-top: 0.68rem;
+  border-top: 1px dashed color-mix(in srgb, var(--ui-accent-2) 38%, var(--ui-border-soft));
+  padding-top: 0.65rem;
+  padding-left: 0.55rem;
+  padding-right: 0.55rem;
+  display: grid;
+  gap: 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--ui-accent-2) 34%, var(--ui-border-soft));
+  border-radius: 12px;
+  background: linear-gradient(155deg, #ffffff 0%, color-mix(in srgb, #ffffff 86%, var(--ui-accent-2-soft)) 100%);
+  box-shadow: var(--ui-shadow-xs);
+}
+
+.weekly-review-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.weekly-review-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  color: var(--ui-text-secondary);
+}
+
+.weekly-review-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-weight: 700;
+  color: color-mix(in srgb, var(--ui-accent-deep) 86%, var(--ui-accent-2));
+}
+
+.weekly-review-label i {
+  color: var(--ui-accent-2);
+  font-size: 0.82rem;
+}
+
+.weekly-review-grid .full {
+  grid-column: 1 / -1;
+}
+
+.weekly-review-grid .checkbox {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.1rem;
+  padding: 0.28rem 0.42rem;
+  border: 1px dashed color-mix(in srgb, var(--ui-accent-2) 34%, var(--ui-border-soft));
+  border-radius: 8px;
+  background: color-mix(in srgb, #ffffff 80%, var(--ui-accent-2-soft));
+  color: color-mix(in srgb, var(--ui-text-primary) 82%, var(--ui-accent-deep));
+}
+
+.weekly-review-grid .checkbox i {
+  color: var(--ui-accent-2);
+}
+
+.weekly-review-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  justify-content: flex-end;
+  margin-top: 0.2rem;
+  padding-top: 0.18rem;
+  padding-bottom: 0.22rem;
 }
 
 .daily-text {

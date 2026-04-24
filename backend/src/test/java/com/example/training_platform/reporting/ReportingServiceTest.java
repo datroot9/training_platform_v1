@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -16,6 +17,7 @@ import java.util.List;
 import java.util.Optional;
 
 import com.example.training_platform.dao.AssignmentDao;
+import com.example.training_platform.dao.projection.AssignmentProjection;
 import com.example.training_platform.dao.DailyReportDao;
 import com.example.training_platform.dao.DailyReportResourceDao;
 import com.example.training_platform.dao.DailyReportTaskHourDao;
@@ -98,8 +100,80 @@ class ReportingServiceTest {
     }
 
     @Test
-    void saveDailyReportDraft_throwsConflictWhenWeekFinalized() {
+    void listDailyReportsForTrainee_rejectsInvertedDateRange() {
+        assertThatThrownBy(() -> reportingService.listDailyReportsForTrainee(
+                TRAINEE_ID,
+                null,
+                LocalDate.of(2025, 2, 10),
+                LocalDate.of(2025, 2, 1)
+        ))
+                .isInstanceOfSatisfying(ResponseStatusException.class, ex ->
+                        assertThat(ex.getStatusCode().value()).isEqualTo(HttpStatus.BAD_REQUEST.value()));
+    }
+
+    @Test
+    void listDailyReportsForTrainee_filtersByAssignmentAndDate() {
         stubTraineeOwnsAssignment();
+        DailyReportEntity row = new DailyReportEntity();
+        row.setId(900L);
+        row.setAssignmentId(ASSIGNMENT_ID);
+        row.setReportDate(LocalDate.of(2025, 1, 9));
+        row.setStatus("SUBMITTED");
+        row.setFresherLabel("F");
+        row.setTrainingDayIndex(4);
+        row.setWhatDone("done");
+        row.setPlannedTomorrow("next");
+        row.setBlockers("none");
+        row.setSubmittedAt(LocalDateTime.now());
+
+        when(dailyReportDao.listByTraineeWithFilters(
+                TRAINEE_ID,
+                ASSIGNMENT_ID,
+                LocalDate.of(2025, 1, 1),
+                LocalDate.of(2025, 1, 31)
+        )).thenReturn(List.of(row));
+        when(dailyReportResourceDao.listByDailyReportId(900L)).thenReturn(List.of());
+        when(dailyReportTaskHourDao.listByDailyReportId(900L)).thenReturn(List.of());
+
+        var result = reportingService.listDailyReportsForTrainee(
+                TRAINEE_ID,
+                ASSIGNMENT_ID,
+                LocalDate.of(2025, 1, 1),
+                LocalDate.of(2025, 1, 31)
+        );
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).id()).isEqualTo(900L);
+        verify(dailyReportDao).listByTraineeWithFilters(
+                TRAINEE_ID,
+                ASSIGNMENT_ID,
+                LocalDate.of(2025, 1, 1),
+                LocalDate.of(2025, 1, 31)
+        );
+    }
+
+    @Test
+    void saveDailyReportDraft_throwsConflictWhenAssignmentNotActive() {
+        when(assignmentDao.countByIdAndTrainee(ASSIGNMENT_ID, TRAINEE_ID)).thenReturn(1L);
+        AssignmentProjection cancelled = new AssignmentProjection();
+        cancelled.setStatus("CANCELLED");
+        when(assignmentDao.selectAssignmentProjectionByIdAndTrainee(ASSIGNMENT_ID, TRAINEE_ID)).thenReturn(Optional.of(cancelled));
+
+        assertThatThrownBy(() -> reportingService.saveDailyReportDraft(
+                TRAINEE_ID,
+                ASSIGNMENT_ID,
+                LocalDate.of(2025, 1, 8),
+                sampleSaveRequest()
+        ))
+                .isInstanceOfSatisfying(ResponseStatusException.class, ex ->
+                        assertThat(ex.getStatusCode().value()).isEqualTo(HttpStatus.CONFLICT.value()));
+
+        verify(dailyReportDao, never()).insert(any(DailyReportEntity.class));
+    }
+
+    @Test
+    void saveDailyReportDraft_throwsConflictWhenWeekFinalized() {
+        stubTraineeOwnsActiveAssignment();
         LocalDate reportDate = LocalDate.of(2025, 1, 8);
         LocalDate weekStart = LocalDate.of(2025, 1, 6);
         WeeklyPerformanceSummaryEntity locked = new WeeklyPerformanceSummaryEntity();
@@ -119,7 +193,7 @@ class ReportingServiceTest {
 
     @Test
     void saveDailyReportDraft_insertsNewReportAndReturnsMappedResponse() {
-        stubTraineeOwnsAssignment();
+        stubTraineeOwnsActiveAssignment();
         LocalDate reportDate = LocalDate.of(2025, 1, 8);
         LocalDate weekStart = LocalDate.of(2025, 1, 6);
         when(weeklyPerformanceSummaryDao.selectByAssignmentAndWeekStart(ASSIGNMENT_ID, weekStart))
@@ -149,7 +223,7 @@ class ReportingServiceTest {
 
     @Test
     void saveDailyReportDraft_rejectsDuplicateResourceTypes() {
-        stubTraineeOwnsAssignment();
+        stubTraineeOwnsActiveAssignment();
         stubWeekOpen();
         when(dailyReportDao.selectByAssignmentAndReportDate(ASSIGNMENT_ID, LocalDate.of(2025, 1, 8)))
                 .thenReturn(Optional.empty());
@@ -179,7 +253,7 @@ class ReportingServiceTest {
 
     @Test
     void saveDailyReportDraft_rejectsBlankResourceType() {
-        stubTraineeOwnsAssignment();
+        stubTraineeOwnsActiveAssignment();
         stubWeekOpen();
         when(dailyReportDao.selectByAssignmentAndReportDate(ASSIGNMENT_ID, LocalDate.of(2025, 1, 8)))
                 .thenReturn(Optional.empty());
@@ -206,7 +280,7 @@ class ReportingServiceTest {
 
     @Test
     void saveDailyReportDraft_rejectsTaskNotInAssignment() {
-        stubTraineeOwnsAssignment();
+        stubTraineeOwnsActiveAssignment();
         stubWeekOpen();
         when(dailyReportDao.selectByAssignmentAndReportDate(ASSIGNMENT_ID, LocalDate.of(2025, 1, 8)))
                 .thenReturn(Optional.empty());
@@ -261,6 +335,151 @@ class ReportingServiceTest {
         ))
                 .isInstanceOfSatisfying(ResponseStatusException.class, ex ->
                         assertThat(ex.getStatusCode().value()).isEqualTo(HttpStatus.NOT_FOUND.value()));
+    }
+
+    @Test
+    void generateWeeklySummaryForAssignment_createsNewSummaryWhenMissing() {
+        LocalDate weekStart = LocalDate.of(2025, 1, 6);
+        DailyReportEntity report = new DailyReportEntity();
+        report.setId(10L);
+        report.setAssignmentId(ASSIGNMENT_ID);
+        report.setReportDate(LocalDate.of(2025, 1, 8));
+        report.setStatus("SUBMITTED");
+        report.setBlockers("Need review");
+        when(dailyReportDao.listByAssignmentAndDateRange(ASSIGNMENT_ID, weekStart, weekStart.plusDays(6)))
+                .thenReturn(List.of(report));
+        when(dailyReportTaskHourDao.listByDailyReportId(10L)).thenReturn(List.of());
+        when(weeklyPerformanceSummaryDao.selectByAssignmentAndWeekStart(ASSIGNMENT_ID, weekStart)).thenReturn(Optional.empty());
+        doAnswer(invocation -> {
+            WeeklyPerformanceSummaryEntity entity = invocation.getArgument(0);
+            entity.setId(500L);
+            return null;
+        }).when(weeklyPerformanceSummaryDao).insert(any(WeeklyPerformanceSummaryEntity.class));
+
+        var generated = reportingService.generateWeeklySummaryForAssignment(ASSIGNMENT_ID, weekStart);
+
+        assertThat(generated.id()).isEqualTo(500L);
+        assertThat(generated.assignmentId()).isEqualTo(ASSIGNMENT_ID);
+        assertThat(generated.reviewStatus()).isEqualTo("PENDING");
+        assertThat(generated.summaryText())
+                .contains("What was accomplished:", "No work logged for this week.")
+                .contains("Difficulties / blockers:", "- Need review")
+                .doesNotContain("Submission rate", "Total daily reports");
+        assertThat(generated.accomplishments()).isEmpty();
+        assertThat(generated.difficulties()).containsExactly("Need review");
+        verify(weeklyPerformanceSummaryDao).insert(any(WeeklyPerformanceSummaryEntity.class));
+    }
+
+    @Test
+    void generateWeeklySummaryForAssignment_mergesWhatDoneLinesSortedByDateAndDedupes() {
+        LocalDate weekStart = LocalDate.of(2025, 1, 6);
+        DailyReportEntity later = new DailyReportEntity();
+        later.setId(20L);
+        later.setAssignmentId(ASSIGNMENT_ID);
+        later.setReportDate(LocalDate.of(2025, 1, 9));
+        later.setStatus("SUBMITTED");
+        later.setWhatDone("Shared task");
+        later.setBlockers(null);
+        DailyReportEntity earlier = new DailyReportEntity();
+        earlier.setId(21L);
+        earlier.setAssignmentId(ASSIGNMENT_ID);
+        earlier.setReportDate(LocalDate.of(2025, 1, 7));
+        earlier.setStatus("SUBMITTED");
+        earlier.setWhatDone("First line\nShared task\nSecond line");
+        earlier.setBlockers("Env issue");
+        when(dailyReportDao.listByAssignmentAndDateRange(ASSIGNMENT_ID, weekStart, weekStart.plusDays(6)))
+                .thenReturn(List.of(later, earlier));
+        when(dailyReportTaskHourDao.listByDailyReportId(20L)).thenReturn(List.of());
+        when(dailyReportTaskHourDao.listByDailyReportId(21L)).thenReturn(List.of());
+        when(weeklyPerformanceSummaryDao.selectByAssignmentAndWeekStart(ASSIGNMENT_ID, weekStart)).thenReturn(Optional.empty());
+        doAnswer(invocation -> {
+            WeeklyPerformanceSummaryEntity entity = invocation.getArgument(0);
+            entity.setId(501L);
+            return null;
+        }).when(weeklyPerformanceSummaryDao).insert(any(WeeklyPerformanceSummaryEntity.class));
+
+        var generated = reportingService.generateWeeklySummaryForAssignment(ASSIGNMENT_ID, weekStart);
+
+        String text = generated.summaryText();
+        assertThat(text.indexOf("- First line")).isLessThan(text.indexOf("- Shared task"));
+        assertThat(text.indexOf("- Shared task")).isLessThan(text.indexOf("- Second line"));
+        assertThat(text).contains("- Env issue").doesNotContain("Submission rate");
+        assertThat(generated.accomplishments()).containsExactly("First line", "Shared task", "Second line");
+        assertThat(generated.difficulties()).containsExactly("Env issue");
+    }
+
+    @Test
+    void listWeeklySummariesForTrainee_fallsBackToParsingSummaryTextWhenReportsMissing() {
+        stubTraineeOwnsAssignment();
+        LocalDate weekStart = LocalDate.of(2025, 1, 6);
+        WeeklyPerformanceSummaryEntity existing = new WeeklyPerformanceSummaryEntity();
+        existing.setId(88L);
+        existing.setAssignmentId(ASSIGNMENT_ID);
+        existing.setWeekStart(weekStart);
+        existing.setWeekEnd(weekStart.plusDays(6));
+        existing.setReviewStatus("PENDING");
+        existing.setSummaryText("""
+                Weekly summary (2025-01-06 – 2025-01-12)
+
+                What was accomplished:
+                - Parsed done one
+                - Parsed done two
+
+                Difficulties / blockers:
+                - Parsed blocker
+                """);
+        when(weeklyPerformanceSummaryDao.listByAssignment(ASSIGNMENT_ID)).thenReturn(List.of(existing));
+        when(dailyReportDao.listByAssignmentAndDateRange(ASSIGNMENT_ID, weekStart, weekStart.plusDays(6)))
+                .thenReturn(List.of());
+
+        var rows = reportingService.listWeeklySummariesForTrainee(TRAINEE_ID, ASSIGNMENT_ID);
+
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).accomplishments()).containsExactly("Parsed done one", "Parsed done two");
+        assertThat(rows.get(0).difficulties()).containsExactly("Parsed blocker");
+    }
+
+    @Test
+    void generateWeeklySummaryForAssignment_updatesExistingSummaryIdempotently() {
+        LocalDate weekStart = LocalDate.of(2025, 1, 6);
+        DailyReportEntity report = new DailyReportEntity();
+        report.setId(11L);
+        report.setAssignmentId(ASSIGNMENT_ID);
+        report.setReportDate(LocalDate.of(2025, 1, 9));
+        report.setStatus("DRAFT");
+        when(dailyReportDao.listByAssignmentAndDateRange(ASSIGNMENT_ID, weekStart, weekStart.plusDays(6)))
+                .thenReturn(List.of(report));
+        when(dailyReportTaskHourDao.listByDailyReportId(11L)).thenReturn(List.of());
+        WeeklyPerformanceSummaryEntity existing = new WeeklyPerformanceSummaryEntity();
+        existing.setId(77L);
+        existing.setAssignmentId(ASSIGNMENT_ID);
+        existing.setWeekStart(weekStart);
+        existing.setWeekEnd(weekStart.plusDays(6));
+        existing.setReviewStatus("REVIEWED");
+        when(weeklyPerformanceSummaryDao.selectByAssignmentAndWeekStart(ASSIGNMENT_ID, weekStart))
+                .thenReturn(Optional.of(existing));
+
+        var generated = reportingService.generateWeeklySummaryForAssignment(ASSIGNMENT_ID, weekStart);
+
+        assertThat(generated.id()).isEqualTo(77L);
+        verify(weeklyPerformanceSummaryDao).update(existing);
+        verify(weeklyPerformanceSummaryDao, never()).insert(any(WeeklyPerformanceSummaryEntity.class));
+    }
+
+    @Test
+    void generatePreviousWeekForAllActiveAssignments_generatesForEachActiveAssignment() {
+        LocalDate today = LocalDate.of(2025, 1, 15); // Wednesday
+        LocalDate previousMonday = LocalDate.of(2025, 1, 6);
+        when(assignmentDao.listActiveAssignmentIds()).thenReturn(List.of(100L, 200L));
+        when(dailyReportDao.listByAssignmentAndDateRange(anyLong(), eq(previousMonday), eq(previousMonday.plusDays(6))))
+                .thenReturn(List.of());
+        when(weeklyPerformanceSummaryDao.selectByAssignmentAndWeekStart(eq(100L), eq(previousMonday))).thenReturn(Optional.empty());
+        when(weeklyPerformanceSummaryDao.selectByAssignmentAndWeekStart(eq(200L), eq(previousMonday))).thenReturn(Optional.empty());
+
+        reportingService.generatePreviousWeekForAllActiveAssignments(today);
+
+        verify(assignmentDao).listActiveAssignmentIds();
+        verify(weeklyPerformanceSummaryDao, times(2)).insert(any(WeeklyPerformanceSummaryEntity.class));
     }
 
     @Test
@@ -324,6 +543,13 @@ class ReportingServiceTest {
 
     private void stubTraineeOwnsAssignment() {
         when(assignmentDao.countByIdAndTrainee(ASSIGNMENT_ID, TRAINEE_ID)).thenReturn(1L);
+    }
+
+    private void stubTraineeOwnsActiveAssignment() {
+        stubTraineeOwnsAssignment();
+        AssignmentProjection active = new AssignmentProjection();
+        active.setStatus("ACTIVE");
+        when(assignmentDao.selectAssignmentProjectionByIdAndTrainee(ASSIGNMENT_ID, TRAINEE_ID)).thenReturn(Optional.of(active));
     }
 
     private void stubWeekOpen() {

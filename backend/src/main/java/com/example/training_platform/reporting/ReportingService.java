@@ -4,12 +4,19 @@ import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.TemporalAdjusters;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.regex.Pattern;
 
 import com.example.training_platform.dao.AssignmentDao;
+import com.example.training_platform.dao.projection.AssignmentProjection;
 import com.example.training_platform.dao.DailyReportDao;
 import com.example.training_platform.dao.DailyReportResourceDao;
 import com.example.training_platform.dao.DailyReportTaskHourDao;
@@ -41,6 +48,7 @@ public class ReportingService {
     private static final String DAILY_SUBMITTED = "SUBMITTED";
     private static final String WEEKLY_PENDING = "PENDING";
     private static final String WEEKLY_REVIEWED = "REVIEWED";
+    private static final Pattern NEWLINE_SPLITTER = Pattern.compile("\\R");
 
     private final AssignmentDao assignmentDao;
     private final UserDao userDao;
@@ -78,6 +86,24 @@ public class ReportingService {
                 .toList();
     }
 
+    public List<DailyReportResponse> listDailyReportsForTrainee(
+            Long traineeId,
+            Long assignmentId,
+            LocalDate fromDate,
+            LocalDate toDate
+    ) {
+        if (assignmentId != null) {
+            assertAssignmentBelongsToTrainee(traineeId, assignmentId);
+        }
+        if (fromDate != null && toDate != null && fromDate.isAfter(toDate)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "fromDate must be on or before toDate");
+        }
+        return dailyReportDao.listByTraineeWithFilters(traineeId, assignmentId, fromDate, toDate)
+                .stream()
+                .map(this::mapDailyReport)
+                .toList();
+    }
+
     public Optional<DailyReportResponse> getDailyReport(Long traineeId, Long assignmentId, LocalDate reportDate) {
         assertAssignmentBelongsToTrainee(traineeId, assignmentId);
         return dailyReportDao.selectByAssignmentAndReportDate(assignmentId, reportDate)
@@ -92,6 +118,7 @@ public class ReportingService {
             SaveDailyReportRequest request
     ) {
         assertAssignmentBelongsToTrainee(traineeId, assignmentId);
+        assertAssignmentActiveForTraineeWrites(traineeId, assignmentId);
         ensureWeekEditable(assignmentId, reportDate);
         DailyReportEntity report = upsertDailyReport(assignmentId, reportDate, request, DAILY_DRAFT);
         replaceResources(report.getId(), request.resources());
@@ -107,6 +134,7 @@ public class ReportingService {
             SaveDailyReportRequest request
     ) {
         assertAssignmentBelongsToTrainee(traineeId, assignmentId);
+        assertAssignmentActiveForTraineeWrites(traineeId, assignmentId);
         ensureWeekEditable(assignmentId, reportDate);
         DailyReportEntity report = upsertDailyReport(assignmentId, reportDate, request, DAILY_SUBMITTED);
         replaceResources(report.getId(), request.resources());
@@ -139,6 +167,65 @@ public class ReportingService {
                 .stream()
                 .map(this::mapDailyReport)
                 .toList();
+    }
+
+    @Transactional
+    public WeeklySummaryResponse generateWeeklySummaryForMentor(
+            Long mentorId,
+            Long traineeId,
+            Long assignmentId,
+            LocalDate weekStart
+    ) {
+        assertMentorCanAccessAssignment(mentorId, traineeId, assignmentId);
+        return generateWeeklySummaryForAssignment(assignmentId, weekStart);
+    }
+
+    @Transactional
+    public WeeklySummaryResponse generateWeeklySummaryForAssignment(Long assignmentId, LocalDate weekStart) {
+        LocalDate normalizedWeekStart = normalizeWeekStart(weekStart);
+        LocalDate weekEnd = normalizedWeekStart.plusDays(6);
+        List<DailyReportEntity> reports = dailyReportDao.listByAssignmentAndDateRange(assignmentId, normalizedWeekStart, weekEnd);
+
+        int reportCount = reports.size();
+        long submittedCount = reports.stream().filter(r -> DAILY_SUBMITTED.equals(r.getStatus())).count();
+        double completionRate = reportCount == 0 ? 0.0 : round2((double) submittedCount / reportCount);
+        double averageDailyHours = computeAverageDailyHours(reports, reportCount);
+        String summaryText = buildWeeklySummaryText(normalizedWeekStart, weekEnd, reports);
+
+        WeeklyPerformanceSummaryEntity summary = weeklyPerformanceSummaryDao
+                .selectByAssignmentAndWeekStart(assignmentId, normalizedWeekStart)
+                .orElseGet(() -> {
+                    WeeklyPerformanceSummaryEntity entity = new WeeklyPerformanceSummaryEntity();
+                    entity.setAssignmentId(assignmentId);
+                    entity.setWeekStart(normalizedWeekStart);
+                    entity.setWeekEnd(weekEnd);
+                    entity.setReviewStatus(WEEKLY_PENDING);
+                    return entity;
+                });
+        boolean isNew = summary.getId() == null;
+
+        summary.setWeekEnd(weekEnd);
+        summary.setSummaryText(summaryText);
+        summary.setCompletionRate(completionRate);
+        summary.setAverageDailyHours(averageDailyHours);
+        if (summary.getReviewStatus() == null || summary.getReviewStatus().isBlank()) {
+            summary.setReviewStatus(WEEKLY_PENDING);
+        }
+
+        if (isNew) {
+            weeklyPerformanceSummaryDao.insert(summary);
+        } else {
+            weeklyPerformanceSummaryDao.update(summary);
+        }
+        return mapWeeklySummary(summary);
+    }
+
+    @Transactional
+    public void generatePreviousWeekForAllActiveAssignments(LocalDate today) {
+        LocalDate weekStart = normalizeWeekStart(today).minusWeeks(1);
+        for (Long assignmentId : assignmentDao.listActiveAssignmentIds()) {
+            generateWeeklySummaryForAssignment(assignmentId, weekStart);
+        }
     }
 
     @Transactional
@@ -182,6 +269,59 @@ public class ReportingService {
                 "COMING_SOON",
                 "Tinh nang se duoc cap nhat trong thoi gian toi."
         );
+    }
+
+    private String buildWeeklySummaryText(LocalDate weekStart, LocalDate weekEnd, List<DailyReportEntity> reports) {
+        List<String> workLines = mergeWeeklyTextLines(reports, DailyReportEntity::getWhatDone);
+        List<String> blockerLines = mergeWeeklyTextLines(reports, DailyReportEntity::getBlockers);
+        StringBuilder sb = new StringBuilder();
+        sb.append("Weekly summary (%s – %s)\n\n".formatted(weekStart, weekEnd));
+        sb.append("What was accomplished:\n");
+        if (workLines.isEmpty()) {
+            sb.append("No work logged for this week.\n");
+        } else {
+            for (String line : workLines) {
+                sb.append("- ").append(line).append('\n');
+            }
+        }
+        sb.append("\nDifficulties / blockers:\n");
+        if (blockerLines.isEmpty()) {
+            sb.append("No difficulties noted for this week.\n");
+        } else {
+            for (String line : blockerLines) {
+                sb.append("- ").append(line).append('\n');
+            }
+        }
+        return sb.toString().trim();
+    }
+
+    private static List<String> mergeWeeklyTextLines(List<DailyReportEntity> reports, Function<DailyReportEntity, String> field) {
+        List<DailyReportEntity> sorted = reports.stream()
+                .sorted(Comparator.comparing(DailyReportEntity::getReportDate, Comparator.nullsLast(Comparator.naturalOrder())))
+                .toList();
+        LinkedHashSet<String> ordered = new LinkedHashSet<>();
+        for (DailyReportEntity report : sorted) {
+            String trimmed = trimToNull(field.apply(report));
+            if (trimmed == null) {
+                continue;
+            }
+            trimmed.lines().map(String::trim).filter(s -> !s.isEmpty()).forEach(ordered::add);
+        }
+        return List.copyOf(ordered);
+    }
+
+    private double computeAverageDailyHours(List<DailyReportEntity> reports, int reportCount) {
+        if (reportCount == 0) return 0.0;
+        double totalHours = reports.stream()
+                .mapToDouble(report -> dailyReportTaskHourDao.listByDailyReportId(report.getId()).stream()
+                        .mapToDouble(item -> item.getHours() == null ? 0.0 : item.getHours())
+                        .sum())
+                .sum();
+        return round2(totalHours / reportCount);
+    }
+
+    private static double round2(double value) {
+        return BigDecimal.valueOf(value).setScale(2, RoundingMode.HALF_UP).doubleValue();
     }
 
     private WeeklyPerformanceSummaryEntity createWeeklySummarySkeleton(Long assignmentId, LocalDate weekStart) {
@@ -312,11 +452,25 @@ public class ReportingService {
     }
 
     private WeeklySummaryResponse mapWeeklySummary(WeeklyPerformanceSummaryEntity summary) {
+        List<DailyReportEntity> reports = dailyReportDao.listByAssignmentAndDateRange(
+                summary.getAssignmentId(),
+                summary.getWeekStart(),
+                summary.getWeekEnd()
+        );
+        List<String> accomplishments = mergeWeeklyTextLines(reports, DailyReportEntity::getWhatDone);
+        List<String> difficulties = mergeWeeklyTextLines(reports, DailyReportEntity::getBlockers);
+        if (accomplishments.isEmpty() && difficulties.isEmpty()) {
+            ParsedSummarySections parsed = parseSummaryTextSections(summary.getSummaryText());
+            accomplishments = parsed.accomplishments();
+            difficulties = parsed.difficulties();
+        }
         return new WeeklySummaryResponse(
                 summary.getId(),
                 summary.getAssignmentId(),
                 summary.getWeekStart(),
                 summary.getWeekEnd(),
+                accomplishments,
+                difficulties,
                 summary.getSummaryText(),
                 summary.getCompletionRate(),
                 summary.getAverageDailyHours(),
@@ -328,6 +482,50 @@ public class ReportingService {
                 summary.getGeneratedAt()
         );
     }
+
+    private static ParsedSummarySections parseSummaryTextSections(String summaryText) {
+        String body = trimToNull(summaryText);
+        if (body == null) return new ParsedSummarySections(List.of(), List.of());
+        String[] rawLines = NEWLINE_SPLITTER.split(body);
+        LinkedHashSet<String> accomplishments = new LinkedHashSet<>();
+        LinkedHashSet<String> difficulties = new LinkedHashSet<>();
+        Section current = Section.NONE;
+        for (String raw : rawLines) {
+            String line = raw == null ? "" : raw.trim();
+            if (line.isEmpty()) {
+                continue;
+            }
+            if ("What was accomplished:".equalsIgnoreCase(line)) {
+                current = Section.ACCOMPLISHMENTS;
+                continue;
+            }
+            if ("Difficulties / blockers:".equalsIgnoreCase(line)) {
+                current = Section.DIFFICULTIES;
+                continue;
+            }
+            if (current == Section.NONE) {
+                continue;
+            }
+            String value = line.startsWith("-") ? trimToNull(line.substring(1)) : trimToNull(line);
+            if (value == null) {
+                continue;
+            }
+            if (current == Section.ACCOMPLISHMENTS) {
+                accomplishments.add(value);
+            } else {
+                difficulties.add(value);
+            }
+        }
+        return new ParsedSummarySections(List.copyOf(accomplishments), List.copyOf(difficulties));
+    }
+
+    private enum Section {
+        NONE,
+        ACCOMPLISHMENTS,
+        DIFFICULTIES
+    }
+
+    private record ParsedSummarySections(List<String> accomplishments, List<String> difficulties) {}
 
     private void ensureWeekEditable(Long assignmentId, LocalDate reportDate) {
         LocalDate weekStart = normalizeWeekStart(reportDate);
@@ -345,6 +543,17 @@ public class ReportingService {
     private void assertAssignmentBelongsToTrainee(Long traineeId, Long assignmentId) {
         if (assignmentDao.countByIdAndTrainee(assignmentId, traineeId) == 0) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Assignment not found");
+        }
+    }
+
+    private void assertAssignmentActiveForTraineeWrites(Long traineeId, Long assignmentId) {
+        AssignmentProjection row = assignmentDao.selectAssignmentProjectionByIdAndTrainee(assignmentId, traineeId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Assignment not found"));
+        if (!"ACTIVE".equals(row.getStatus())) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "This curriculum assignment is no longer active; daily reports are read only."
+            );
         }
     }
 

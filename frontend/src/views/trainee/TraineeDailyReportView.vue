@@ -5,14 +5,18 @@ import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import Message from 'primevue/message'
 import ProgressSpinner from 'primevue/progressspinner'
+import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import Textarea from 'primevue/textarea'
+import { ApiError } from '../../api/client'
+import * as traineeApi from '../../api/modules/trainee'
+import type { AssignmentResponse } from '../../api/types'
 import PageHeader from '../../components/layout/PageHeader.vue'
 import { useTraineeDailyReport } from '../../composables/useTraineeDailyReport'
 import { injectTraineeAssignment, taskStatusLabel, taskStatusTagSeverity } from '../../composables/useTraineeAssignment'
 import { useAuthStore } from '../../stores/auth'
 
-const { assignment, tasks: assignmentTasks, hasAssignment, loading: assignmentLoading, error: assignmentError } = injectTraineeAssignment()
+const { assignment, tasks: assignmentTasks, hasAssignment, error: assignmentError } = injectTraineeAssignment()
 const auth = useAuthStore()
 
 const traineeDisplayName = computed(() => {
@@ -23,7 +27,67 @@ const traineeDisplayName = computed(() => {
   return first.charAt(0).toUpperCase() + first.slice(1)
 })
 
-const assignmentId = computed(() => assignment.value?.id ?? null)
+const assignmentsForReports = ref<AssignmentResponse[]>([])
+const assignmentsListLoading = ref(true)
+const assignmentsListError = ref('')
+const reportAssignmentId = ref<number | null>(null)
+type ReportViewMode = 'WEEKLY' | 'ALL'
+const reportViewMode = ref<ReportViewMode>('WEEKLY')
+const allReportsAssignmentId = ref<number | null>(null)
+const allReportsFromDate = ref('')
+const allReportsToDate = ref('')
+const reportViewModeOptions: Array<{ label: string; value: ReportViewMode }> = [
+  { label: 'Weekly view', value: 'WEEKLY' },
+  { label: 'All reports', value: 'ALL' },
+]
+
+const assignmentSelectOptions = computed(() =>
+  assignmentsForReports.value.map((a) => ({
+    id: a.id,
+    label: a.status === 'ACTIVE' ? `${a.curriculumName} (active)` : `${a.curriculumName} (${a.status})`,
+  })),
+)
+const allReportsAssignmentOptions = computed(() => [
+  { id: null, label: 'All assignments' },
+  ...assignmentSelectOptions.value,
+])
+
+const reportingReadOnly = computed(() => {
+  if (reportViewMode.value === 'ALL') return true
+  const id = reportAssignmentId.value
+  if (id == null) return true
+  const row = assignmentsForReports.value.find((a) => a.id === id)
+  return !row || row.status !== 'ACTIVE'
+})
+
+async function refreshAssignmentsForReporting(): Promise<void> {
+  assignmentsListError.value = ''
+  assignmentsListLoading.value = true
+  try {
+    const list = await traineeApi.listAssignments()
+    assignmentsForReports.value = list
+    const activeId = list.find((a) => a.status === 'ACTIVE')?.id
+    const currentValid =
+      reportAssignmentId.value != null && list.some((a) => a.id === reportAssignmentId.value)
+    if (!currentValid) {
+      reportAssignmentId.value = activeId ?? list[0]?.id ?? null
+    }
+  } catch (e) {
+    assignmentsListError.value = e instanceof ApiError ? e.message : 'Could not load assignments'
+    assignmentsForReports.value = []
+    reportAssignmentId.value = null
+  } finally {
+    assignmentsListLoading.value = false
+  }
+}
+
+watch(
+  () => assignment.value?.id,
+  () => {
+    void refreshAssignmentsForReporting()
+  },
+  { immediate: true },
+)
 
 const {
   submitting,
@@ -41,9 +105,10 @@ const {
   blockers,
   resources,
   loadWeek,
+  loadAllReports,
   saveDraft,
   submit,
-} = useTraineeDailyReport(assignmentId, traineeDisplayName)
+} = useTraineeDailyReport(reportAssignmentId, traineeDisplayName, reportingReadOnly)
 
 const mode = ref<'list' | 'create' | 'edit'>('list')
 const editingReportDate = ref<string | null>(null)
@@ -64,8 +129,19 @@ const selectedDateModel = computed(() => toIsoDate(selectedDate.value))
 const latestWeeklySummary = computed(() => weeklySummaries.value[0] ?? null)
 const todayIso = computed(() => toIsoDate(new Date()))
 
-const todayReports = computed(() => weekReports.value.filter((item) => item.reportDate === todayIso.value))
-const previousReports = computed(() => weekReports.value.filter((item) => item.reportDate < todayIso.value).reverse())
+function normalizedWeeklyItems(items: string[] | null | undefined): string[] {
+  return (items ?? []).map((item) => item.trim()).filter((item) => item.length > 0)
+}
+
+const sortedReports = computed(() =>
+  [...weekReports.value].sort((a, b) => {
+    const byDate = b.reportDate.localeCompare(a.reportDate)
+    if (byDate !== 0) return byDate
+    return (b.submittedAt ?? '').localeCompare(a.submittedAt ?? '')
+  }),
+)
+const todayReports = computed(() => sortedReports.value.filter((item) => item.reportDate === todayIso.value))
+const previousReports = computed(() => sortedReports.value.filter((item) => item.reportDate !== todayIso.value))
 const orderedAssignmentTasks = computed(() => [...assignmentTasks.value].sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id))
 const focusTask = computed(() => {
   const inProgress = orderedAssignmentTasks.value.find((task) => task.status === 'IN_PROGRESS')
@@ -167,7 +243,24 @@ const deadlineMessageSeverity = computed<'info' | 'warn' | 'error' | 'secondary'
 
 function updateWeekStart(value: string): void {
   weekStart.value = parseIsoDate(value)
-  void loadWeek()
+  if (reportViewMode.value === 'WEEKLY') {
+    void loadWeek()
+  }
+}
+
+function assignmentNameById(assignmentId: number): string {
+  return assignmentsForReports.value.find((a) => a.id === assignmentId)?.curriculumName ?? `Assignment #${assignmentId}`
+}
+
+function applyAllFilters(): void {
+  if (allReportsFromDate.value && allReportsToDate.value && allReportsFromDate.value > allReportsToDate.value) {
+    return
+  }
+  void loadAllReports({
+    assignmentId: allReportsAssignmentId.value,
+    fromDate: allReportsFromDate.value || null,
+    toDate: allReportsToDate.value || null,
+  })
 }
 
 function pickReportDate(date: string): void {
@@ -228,6 +321,7 @@ function removeResourceRow(index: number): void {
 }
 
 function openCreateReport(): void {
+  if (reportingReadOnly.value) return
   createTodayReport()
 }
 
@@ -264,11 +358,15 @@ const isDialogVisible = computed({
 })
 
 watch(
-  assignmentId,
+  [reportAssignmentId, reportViewMode],
   () => {
     mode.value = 'list'
     editingReportDate.value = null
-    void loadWeek()
+    if (reportViewMode.value === 'WEEKLY') {
+      void loadWeek()
+      return
+    }
+    void applyAllFilters()
   },
   { immediate: true },
 )
@@ -284,27 +382,81 @@ watch(
     />
 
     <Message v-if="assignmentError" severity="error" :closable="false">{{ assignmentError }}</Message>
+    <Message v-if="assignmentsListError" severity="error" :closable="false">{{ assignmentsListError }}</Message>
 
-    <div v-if="assignmentLoading" class="centered">
+    <div v-if="assignmentsListLoading" class="centered">
       <ProgressSpinner stroke-width="3" animation-duration=".8s" />
     </div>
 
-    <template v-else-if="!hasAssignment">
+    <template v-else-if="assignmentsForReports.length === 0">
       <Message severity="info" :closable="false">
-        No active assignment. Ask your mentor to assign a published curriculum before sending daily reports.
+        No curriculum assignments yet. Ask your mentor to assign a published curriculum before sending daily reports.
       </Message>
     </template>
 
     <div v-else class="daily-layout">
+      <Message v-if="!hasAssignment" severity="warn" :closable="false" class="daily-context-banner">
+        You have no active curriculum. Choose a past assignment above to view its daily reports (read-only).
+      </Message>
       <section class="daily-summary card-shell">
         <div class="history-head">
           <h3>Daily summary</h3>
-          <Button label="Create report" icon="pi pi-plus" size="small" @click="openCreateReport" />
+          <Button
+            label="Create report"
+            icon="pi pi-plus"
+            size="small"
+            :disabled="reportingReadOnly"
+            @click="openCreateReport"
+          />
         </div>
-        <label class="field">
+        <label class="field field--assignment-select">
+          <span>View mode</span>
+          <Select
+            v-model="reportViewMode"
+            :options="reportViewModeOptions"
+            option-label="label"
+            option-value="value"
+            class="report-assignment-select"
+          />
+        </label>
+        <label class="field field--assignment-select">
+          <span>Reports for curriculum</span>
+          <Select
+            v-model="reportAssignmentId"
+            :options="assignmentSelectOptions"
+            option-label="label"
+            option-value="id"
+            placeholder="Select curriculum"
+            class="report-assignment-select"
+          />
+        </label>
+        <label v-if="reportViewMode === 'WEEKLY'" class="field">
           Week start
           <input type="date" :value="weekStartModel" @change="updateWeekStart(($event.target as HTMLInputElement).value)" />
         </label>
+        <div v-else class="all-filters">
+          <label class="field">
+            Assignment filter
+            <Select
+              v-model="allReportsAssignmentId"
+              :options="allReportsAssignmentOptions"
+              option-label="label"
+              option-value="id"
+              class="report-assignment-select"
+            />
+          </label>
+          <label class="field">
+            From date
+            <input v-model="allReportsFromDate" type="date" />
+          </label>
+          <label class="field">
+            To date
+            <input v-model="allReportsToDate" type="date" />
+          </label>
+          <div class="all-filters-actions">
+            <Button label="Apply filters" icon="pi pi-filter" size="small" @click="applyAllFilters" />
+          </div>
+        </div>
         <section class="focus-card">
           <div class="focus-card-head">
             <h4>Current focus</h4>
@@ -330,7 +482,7 @@ watch(
         </div>
         <section class="history-group">
           <h4>Today</h4>
-          <p v-if="todayReports.length === 0" class="muted small">No report for today yet.</p>
+          <p v-if="todayReports.length === 0" class="muted small">No reports for today.</p>
           <button
             v-for="item in todayReports"
             :key="item.id"
@@ -343,13 +495,14 @@ watch(
               <strong>{{ item.reportDate }}</strong>
               <Tag :value="item.status" :severity="item.status === 'SUBMITTED' ? 'info' : 'secondary'" rounded />
             </div>
+            <p class="muted small report-assignment">{{ assignmentNameById(item.assignmentId) }}</p>
             <p>{{ trainingDayLabel(item.trainingDayIndex) }}</p>
           </button>
         </section>
 
         <section class="history-group">
           <h4>Previous days</h4>
-          <p v-if="previousReports.length === 0" class="muted small">No previous reports in selected week.</p>
+          <p v-if="previousReports.length === 0" class="muted small">No older reports in current filter.</p>
           <button
             v-for="item in previousReports"
             :key="item.id"
@@ -362,6 +515,7 @@ watch(
               <strong>{{ item.reportDate }}</strong>
               <Tag :value="item.status" :severity="item.status === 'SUBMITTED' ? 'info' : 'secondary'" rounded />
             </div>
+            <p class="muted small report-assignment">{{ assignmentNameById(item.assignmentId) }}</p>
             <p>{{ trainingDayLabel(item.trainingDayIndex) }}</p>
           </button>
         </section>
@@ -398,6 +552,13 @@ watch(
 
         <div class="daily-form-body">
           <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
+          <Message v-else-if="reportViewMode === 'ALL'" severity="info" :closable="false">
+            All reports mode is view-only. Switch back to Weekly view to draft/submit.
+          </Message>
+          <Message v-else-if="reportingReadOnly" severity="info" :closable="false">
+            You are viewing a past or inactive curriculum assignment. Daily reports are read-only here; use your active
+            curriculum to create new reports.
+          </Message>
           <Message v-else-if="!canEdit" severity="warn" :closable="false">
             This week is locked. Daily report can no longer be edited.
           </Message>
@@ -502,8 +663,25 @@ watch(
             <p v-if="latestWeeklySummary.mentorGrade != null" class="weekly-feedback-grade">
               Mentor grade: {{ latestWeeklySummary.mentorGrade }}/10
             </p>
+            <div class="weekly-breakdown">
+              <p class="weekly-breakdown-title">What was accomplished</p>
+              <ul v-if="normalizedWeeklyItems(latestWeeklySummary.accomplishments).length > 0" class="weekly-breakdown-list">
+                <li v-for="(line, idx) in normalizedWeeklyItems(latestWeeklySummary.accomplishments)" :key="`trainee-done-${idx}`">
+                  {{ line }}
+                </li>
+              </ul>
+              <p v-else class="weekly-feedback-text">No work logged for this week.</p>
+
+              <p class="weekly-breakdown-title">Difficulties / blockers</p>
+              <ul v-if="normalizedWeeklyItems(latestWeeklySummary.difficulties).length > 0" class="weekly-breakdown-list">
+                <li v-for="(line, idx) in normalizedWeeklyItems(latestWeeklySummary.difficulties)" :key="`trainee-diff-${idx}`">
+                  {{ line }}
+                </li>
+              </ul>
+              <p v-else class="weekly-feedback-text">No difficulties noted for this week.</p>
+            </div>
             <p class="weekly-feedback-text">
-              {{ latestWeeklySummary.mentorFeedback || 'No mentor feedback yet.' }}
+              Mentor feedback: {{ latestWeeklySummary.mentorFeedback || 'No mentor feedback yet.' }}
             </p>
           </div>
         </div>
@@ -638,6 +816,29 @@ watch(
   font-size: 0.85rem;
 }
 
+.field--assignment-select {
+  margin-bottom: 0.35rem;
+}
+
+.field--assignment-select :deep(.report-assignment-select) {
+  width: 100%;
+}
+
+.daily-context-banner {
+  margin-bottom: 0.75rem;
+}
+
+.all-filters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.all-filters-actions {
+  display: flex;
+  align-items: flex-end;
+}
+
 .field input[type='date'],
 .form-grid input[type='number'] {
   border: 1px solid var(--ui-border);
@@ -686,6 +887,11 @@ watch(
   margin: 0.35rem 0 0;
   color: var(--ui-text-secondary);
   font-size: 0.82rem;
+}
+
+.report-assignment {
+  margin-top: 0.3rem;
+  font-weight: 600;
 }
 
 .daily-form {
@@ -905,6 +1111,28 @@ watch(
 .weekly-feedback-grade {
   font-weight: 600;
   color: var(--ui-text-primary);
+}
+
+.weekly-breakdown {
+  margin-top: 0.35rem;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.weekly-breakdown-title {
+  margin: 0.2rem 0 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--ui-text-primary);
+}
+
+.weekly-breakdown-list {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.2rem;
+  font-size: 0.85rem;
+  color: var(--ui-text-secondary);
 }
 
 .muted {

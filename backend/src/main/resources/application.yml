@@ -31,3 +31,5 @@ app:
     refresh-ttl-seconds: ${JWT_REFRESH_TTL_SECONDS:1209600}
   storage:
     root: ${APP_STORAGE_ROOT:./var/storage}
+  # reporting:
+  #   weekly-aggregation-cron: "0/10 * * * * *"

@@ -7,7 +7,6 @@ import com.example.training_platform.auth.AuthenticatedUser;
 import com.example.training_platform.common.dto.ApiResponse;
 import com.example.training_platform.reporting.dto.DailyReportResponse;
 import com.example.training_platform.reporting.dto.ReviewWeeklySummaryRequest;
-import com.example.training_platform.reporting.dto.WeeklySummaryGenerationPlaceholderResponse;
 import com.example.training_platform.reporting.dto.WeeklySummaryResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -101,18 +100,25 @@ public class MentorReportingController {
     }
 
     @PostMapping("/weekly-summaries/generate")
-    @Operation(summary = "Generate weekly summary (placeholder)")
-    public ResponseEntity<ApiResponse<WeeklySummaryGenerationPlaceholderResponse>> generateWeeklySummary(
+    @Operation(summary = "Generate weekly summary")
+    public ResponseEntity<ApiResponse<WeeklySummaryResponse>> generateWeeklySummary(
             Authentication authentication,
             @PathVariable("traineeId") Long traineeId,
-            @PathVariable("assignmentId") Long assignmentId
+            @PathVariable("assignmentId") Long assignmentId,
+            @RequestParam(value = "weekStart", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate weekStart
     ) {
         AuthenticatedUser current = (AuthenticatedUser) authentication.getPrincipal();
-        WeeklySummaryGenerationPlaceholderResponse data = reportingService.generateWeeklySummaryPlaceholder(
+        LocalDate targetWeekStart = weekStart != null
+                ? weekStart
+                : LocalDate.now().with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY)).minusWeeks(1);
+        WeeklySummaryResponse data = reportingService.generateWeeklySummaryForMentor(
                 current.userId(),
                 traineeId,
-                assignmentId
+                assignmentId,
+                targetWeekStart
         );
-        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Weekly generation placeholder", data));
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Weekly summary generated", data));
     }
 }

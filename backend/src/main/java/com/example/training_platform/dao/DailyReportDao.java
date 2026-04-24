@@ -21,6 +21,9 @@ public interface DailyReportDao {
     @Select
     List<DailyReportEntity> listByAssignmentAndDateRange(Long assignmentId, LocalDate fromDate, LocalDate toDate);
 
+    @Select
+    List<DailyReportEntity> listByTraineeWithFilters(Long traineeId, Long assignmentId, LocalDate fromDate, LocalDate toDate);
+
     @Insert
     int insert(DailyReportEntity entity);
 

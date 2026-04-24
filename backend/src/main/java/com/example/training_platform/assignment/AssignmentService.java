@@ -150,6 +150,19 @@ public class AssignmentService {
         return getActiveAssignment(traineeId);
     }
 
+    public List<AssignmentResponse> listAssignmentsForMentor(Long mentorId, Long traineeId) {
+        assertTraineeBelongsToMentor(mentorId, traineeId);
+        return assignmentDao.listAssignmentProjectionsByTraineeId(traineeId).stream()
+                .map(this::mapAssignment)
+                .toList();
+    }
+
+    public List<AssignmentResponse> listAssignmentsForTrainee(Long traineeId) {
+        return assignmentDao.listAssignmentProjectionsByTraineeId(traineeId).stream()
+                .map(this::mapAssignment)
+                .toList();
+    }
+
     public List<AssignmentTaskResponse> getAssignmentTasksForMentor(Long mentorId, Long traineeId, Long assignmentId) {
         assertTraineeBelongsToMentor(mentorId, traineeId);
         return getAssignmentTasks(traineeId, assignmentId);

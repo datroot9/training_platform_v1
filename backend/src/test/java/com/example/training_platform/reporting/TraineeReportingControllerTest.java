@@ -49,6 +49,48 @@ class TraineeReportingControllerTest {
     private JwtService jwtService;
 
     @Test
+    void listAllDailyReportsReturnsEnvelope() throws Exception {
+        DailyReportResponse row = new DailyReportResponse(
+                11L,
+                ASSIGNMENT_ID,
+                LocalDate.of(2025, 1, 9),
+                "SUBMITTED",
+                "Fresher",
+                3,
+                "done",
+                "next",
+                "none",
+                List.of(),
+                LocalDateTime.now(),
+                null,
+                List.of()
+        );
+        when(reportingService.listDailyReportsForTrainee(
+                9L,
+                ASSIGNMENT_ID,
+                LocalDate.of(2025, 1, 1),
+                LocalDate.of(2025, 1, 31)
+        )).thenReturn(List.of(row));
+
+        mockMvc.perform(get("/api/trainee/daily-reports")
+                        .param("assignmentId", String.valueOf(ASSIGNMENT_ID))
+                        .param("fromDate", "2025-01-01")
+                        .param("toDate", "2025-01-31")
+                        .principal(auth(9L, "t@local", "TRAINEE")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.message").value("Daily reports fetched"))
+                .andExpect(jsonPath("$.data[0].id").value(11));
+
+        verify(reportingService).listDailyReportsForTrainee(
+                9L,
+                ASSIGNMENT_ID,
+                LocalDate.of(2025, 1, 1),
+                LocalDate.of(2025, 1, 31)
+        );
+    }
+
+    @Test
     void listDailyReportsByWeekReturnsEnvelope() throws Exception {
         DailyReportResponse row = new DailyReportResponse(
                 1L,
@@ -166,6 +208,8 @@ class TraineeReportingControllerTest {
                 ASSIGNMENT_ID,
                 LocalDate.of(2025, 1, 6),
                 LocalDate.of(2025, 1, 12),
+                List.of("Task 1"),
+                List.of("Issue 1"),
                 "text",
                 0.5,
                 1.0,

@@ -50,6 +50,14 @@ public class TraineeAssignmentController {
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Active assignment fetched", data));
     }
 
+    @GetMapping("/assignments")
+    @Operation(summary = "List all curriculum assignments for current trainee (any status, newest first)")
+    public ResponseEntity<ApiResponse<List<AssignmentResponse>>> listAssignments(Authentication authentication) {
+        AuthenticatedUser current = (AuthenticatedUser) authentication.getPrincipal();
+        List<AssignmentResponse> data = assignmentService.listAssignmentsForTrainee(current.userId());
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Assignments fetched", data));
+    }
+
     @GetMapping("/assignments/{assignmentId}/tasks")
     @Operation(summary = "List tasks of an assignment owned by current trainee")
     public ResponseEntity<ApiResponse<List<AssignmentTaskResponse>>> getAssignmentTasks(

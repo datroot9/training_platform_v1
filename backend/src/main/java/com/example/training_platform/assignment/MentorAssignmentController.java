@@ -35,6 +35,18 @@ public class MentorAssignmentController {
         this.assignmentService = assignmentService;
     }
 
+    @GetMapping("/{traineeId}/assignments")
+    @Operation(summary = "List all curriculum assignments for trainee (any status, newest first)")
+    public ResponseEntity<ApiResponse<List<AssignmentResponse>>> listTraineeAssignments(
+            Authentication authentication,
+            @Parameter(description = "Trainee user id")
+            @PathVariable("traineeId") Long traineeId
+    ) {
+        AuthenticatedUser current = (AuthenticatedUser) authentication.getPrincipal();
+        List<AssignmentResponse> data = assignmentService.listAssignmentsForMentor(current.userId(), traineeId);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Assignments fetched", data));
+    }
+
     @GetMapping("/{traineeId}/assignments/active")
     @Operation(summary = "Get trainee active assignment (read-only, mentor must own trainee)")
     public ResponseEntity<ApiResponse<AssignmentResponse>> getTraineeActiveAssignment(

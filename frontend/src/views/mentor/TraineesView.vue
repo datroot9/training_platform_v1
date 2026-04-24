@@ -7,7 +7,6 @@ import DataTable from 'primevue/datatable'
 import Dialog from 'primevue/dialog'
 import IconField from 'primevue/iconfield'
 import InputIcon from 'primevue/inputicon'
-import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
 import Menu from 'primevue/menu'
 import Message from 'primevue/message'
@@ -16,7 +15,6 @@ import ProgressSpinner from 'primevue/progressspinner'
 import Paginator from 'primevue/paginator'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
-import Textarea from 'primevue/textarea'
 import Toast from 'primevue/toast'
 import { useToast } from 'primevue/usetoast'
 import type { MenuItem } from 'primevue/menuitem'
@@ -68,11 +66,6 @@ const progressError = ref('')
 const weeklySummaries = ref<WeeklySummaryResponse[]>([])
 const weeklyLoading = ref(false)
 const weeklyError = ref('')
-const weeklyGenerationLoading = ref(false)
-const weeklyReviewWeekStart = ref('')
-const weeklyReviewGrade = ref<number | null>(null)
-const weeklyReviewFeedback = ref('')
-const weeklyReviewFinalize = ref(true)
 
 const orderedProgressTasks = computed(() =>
   [...progressTasks.value].sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id),
@@ -143,15 +136,8 @@ function formatDate(value?: string | null): string {
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(date)
 }
 
-function getMondayIso(date: Date = new Date()): string {
-  const d = new Date(date)
-  const day = d.getDay()
-  const shift = day === 0 ? 6 : day - 1
-  d.setDate(d.getDate() - shift)
-  const year = d.getFullYear()
-  const month = String(d.getMonth() + 1).padStart(2, '0')
-  const dayOfMonth = String(d.getDate()).padStart(2, '0')
-  return `${year}-${month}-${dayOfMonth}`
+function normalizedWeeklyItems(items: string[] | null | undefined): string[] {
+  return (items ?? []).map((item) => item.trim()).filter((item) => item.length > 0)
 }
 
 async function loadWeeklySummaries(): Promise<void> {
@@ -192,10 +178,6 @@ async function openProgressDialog(row: TraineeResponse): Promise<void> {
   progressTasks.value = []
   weeklySummaries.value = []
   weeklyError.value = ''
-  weeklyReviewWeekStart.value = getMondayIso()
-  weeklyReviewGrade.value = null
-  weeklyReviewFeedback.value = ''
-  weeklyReviewFinalize.value = true
   try {
     const a = await mentorApi.getTraineeActiveAssignmentOrNull(row.id)
     progressAssignment.value = a
@@ -217,53 +199,6 @@ function closeProgressDialog(): void {
   progressError.value = ''
   weeklySummaries.value = []
   weeklyError.value = ''
-}
-
-async function triggerWeeklyGeneration(): Promise<void> {
-  if (!progressTrainee.value || !progressAssignment.value) return
-  weeklyGenerationLoading.value = true
-  try {
-    const res = await mentorApi.generateWeeklySummaryPlaceholder(progressTrainee.value.id, progressAssignment.value.id)
-    toast.add({
-      severity: 'info',
-      summary: 'Weekly generation',
-      detail: res.message,
-      life: 3500,
-    })
-  } catch (e) {
-    weeklyError.value = e instanceof ApiError ? e.message : 'Could not call generation endpoint'
-  } finally {
-    weeklyGenerationLoading.value = false
-  }
-}
-
-async function submitWeeklyReview(): Promise<void> {
-  if (!progressTrainee.value || !progressAssignment.value || !weeklyReviewWeekStart.value || weeklyReviewGrade.value == null) return
-  weeklyError.value = ''
-  weeklyLoading.value = true
-  try {
-    await mentorApi.reviewWeeklySummary(
-      progressTrainee.value.id,
-      progressAssignment.value.id,
-      weeklyReviewWeekStart.value,
-      {
-        mentorGrade: weeklyReviewGrade.value,
-        mentorFeedback: weeklyReviewFeedback.value.trim(),
-        finalizeWeek: weeklyReviewFinalize.value,
-      },
-    )
-    toast.add({
-      severity: 'success',
-      summary: 'Weekly review saved',
-      detail: `Week ${weeklyReviewWeekStart.value} was reviewed.`,
-      life: 2800,
-    })
-    await loadWeeklySummaries()
-  } catch (e) {
-    weeklyError.value = e instanceof ApiError ? e.message : 'Could not save weekly review'
-  } finally {
-    weeklyLoading.value = false
-  }
 }
 
 async function load(): Promise<void> {
@@ -774,52 +709,12 @@ function onPageChange(event: { first: number; rows: number }): void {
           <section class="weekly-review-card">
             <div class="weekly-review-head">
               <h4>Weekly review</h4>
-              <Button
-                label="Trigger summary generation"
-                icon="pi pi-cog"
-                text
-                size="small"
-                :loading="weeklyGenerationLoading"
-                @click="triggerWeeklyGeneration"
-              />
             </div>
 
             <Message v-if="weeklyError" severity="error" :closable="false" class="mb-msg">{{ weeklyError }}</Message>
-
-            <div class="weekly-review-form">
-              <label>
-                Week start
-                <input v-model="weeklyReviewWeekStart" type="date" />
-              </label>
-              <label>
-                Mentor grade (0 - 10)
-                <InputNumber
-                  :model-value="weeklyReviewGrade"
-                  :min="0"
-                  :max="10"
-                  :min-fraction-digits="0"
-                  :max-fraction-digits="2"
-                  @update:model-value="weeklyReviewGrade = $event as number | null"
-                />
-              </label>
-              <label class="full">
-                Mentor feedback
-                <Textarea v-model="weeklyReviewFeedback" rows="3" auto-resize />
-              </label>
-              <label class="checkbox">
-                <input v-model="weeklyReviewFinalize" type="checkbox" />
-                Finalize this week (lock trainee edits)
-              </label>
-            </div>
-
-            <div class="weekly-review-actions">
-              <Button
-                label="Save weekly review"
-                :loading="weeklyLoading"
-                :disabled="!weeklyReviewWeekStart || weeklyReviewGrade == null || !weeklyReviewFeedback.trim()"
-                @click="submitWeeklyReview"
-              />
-            </div>
+            <Message severity="info" :closable="false" class="mb-msg">
+              Weekly review actions moved to Report page. Use Mentor Reports → Weekly summary to review and finalize.
+            </Message>
 
             <div class="weekly-review-list">
               <p class="weekly-review-list-title">Existing weekly summaries</p>
@@ -838,7 +733,24 @@ function onPageChange(event: { first: number; rows: number }): void {
                     ·
                     {{ item.finalizedAt ? 'Finalized' : 'Open' }}
                   </p>
-                  <p class="weekly-summary-text">{{ item.mentorFeedback || 'No feedback yet.' }}</p>
+                  <div class="weekly-breakdown">
+                    <p class="weekly-breakdown-title">What was accomplished</p>
+                    <ul v-if="normalizedWeeklyItems(item.accomplishments).length > 0" class="weekly-breakdown-list">
+                      <li v-for="(line, idx) in normalizedWeeklyItems(item.accomplishments)" :key="`done-${item.id}-${idx}`">
+                        {{ line }}
+                      </li>
+                    </ul>
+                    <p v-else class="weekly-summary-text">No work logged for this week.</p>
+
+                    <p class="weekly-breakdown-title">Difficulties / blockers</p>
+                    <ul v-if="normalizedWeeklyItems(item.difficulties).length > 0" class="weekly-breakdown-list">
+                      <li v-for="(line, idx) in normalizedWeeklyItems(item.difficulties)" :key="`diff-${item.id}-${idx}`">
+                        {{ line }}
+                      </li>
+                    </ul>
+                    <p v-else class="weekly-summary-text">No difficulties noted for this week.</p>
+                  </div>
+                  <p class="weekly-summary-text">Mentor feedback: {{ item.mentorFeedback || 'No feedback yet.' }}</p>
                 </li>
               </ul>
             </div>
@@ -1219,6 +1131,28 @@ function onPageChange(event: { first: number; rows: number }): void {
 .weekly-summary-meta,
 .weekly-summary-text {
   margin: 0.3rem 0 0;
+  font-size: 0.84rem;
+  color: var(--ui-text-secondary);
+}
+
+.weekly-breakdown {
+  margin-top: 0.35rem;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.weekly-breakdown-title {
+  margin: 0.2rem 0 0;
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: var(--ui-text-primary);
+}
+
+.weekly-breakdown-list {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.2rem;
   font-size: 0.84rem;
   color: var(--ui-text-secondary);
 }

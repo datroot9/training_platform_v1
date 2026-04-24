@@ -122,6 +122,11 @@ export async function getTraineeActiveAssignmentOrNull(traineeId: number): Promi
   }
 }
 
+/** All assignments for the trainee (any status), newest first. */
+export async function listTraineeAssignments(traineeId: number): Promise<AssignmentResponse[]> {
+  return requestJson<AssignmentResponse[]>(`/api/mentor/trainees/${traineeId}/assignments`)
+}
+
 export async function getTraineeAssignmentTasks(
   traineeId: number,
   assignmentId: number,

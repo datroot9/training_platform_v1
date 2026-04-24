@@ -17,6 +17,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
+import com.example.training_platform.assignment.dto.AssignmentResponse;
 import com.example.training_platform.assignment.dto.AssignmentTaskResponse;
 import com.example.training_platform.dao.AssignmentDao;
 import com.example.training_platform.dao.CurriculumDao;
@@ -110,6 +111,71 @@ class AssignmentServiceTest {
         assertThat(result.curriculumId()).isEqualTo(22L);
         assertThat(result.status()).isEqualTo("ACTIVE");
         assertThat(result.generatedTaskCount()).isEqualTo(0);
+    }
+
+    @Test
+    void listAssignmentsForMentorThrowsWhenTraineeNotLinked() {
+        when(userDao.countTraineeByMentor(5L, 11L)).thenReturn(0L);
+
+        assertThatThrownBy(() -> assignmentService.listAssignmentsForMentor(5L, 11L))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void listAssignmentsForMentorReturnsMappedAssignments() {
+        AssignmentProjection row = new AssignmentProjection();
+        row.setId(77L);
+        row.setTraineeId(11L);
+        row.setCurriculumId(22L);
+        row.setCurriculumName("Curriculum A");
+        row.setCurriculumDescription("Desc");
+        row.setCurriculumVersionLabel("1.0");
+        row.setMentorName("Mentor");
+        row.setMentorEmail("m@local");
+        row.setStatus("CANCELLED");
+        row.setAssignedAt(LocalDateTime.now().minusDays(5));
+        row.setEndedAt(LocalDateTime.now().minusDays(1));
+
+        when(userDao.countTraineeByMentor(5L, 11L)).thenReturn(1L);
+        when(assignmentDao.listAssignmentProjectionsByTraineeId(11L)).thenReturn(List.of(row));
+        when(taskDao.countByAssignmentId(77L)).thenReturn(2L);
+        when(taskDao.sumEstimatedDaysByAssignmentId(77L)).thenReturn(5);
+
+        List<AssignmentResponse> result = assignmentService.listAssignmentsForMentor(5L, 11L);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).id()).isEqualTo(77L);
+        assertThat(result.get(0).status()).isEqualTo("CANCELLED");
+        assertThat(result.get(0).curriculumName()).isEqualTo("Curriculum A");
+        assertThat(result.get(0).generatedTaskCount()).isEqualTo(2);
+    }
+
+    @Test
+    void listAssignmentsForTraineeReturnsMappedAssignments() {
+        AssignmentProjection row = new AssignmentProjection();
+        row.setId(88L);
+        row.setTraineeId(11L);
+        row.setCurriculumId(33L);
+        row.setCurriculumName("Curriculum B");
+        row.setCurriculumDescription(null);
+        row.setCurriculumVersionLabel("2.0");
+        row.setMentorName("Mentor");
+        row.setMentorEmail("m@local");
+        row.setStatus("ACTIVE");
+        row.setAssignedAt(LocalDateTime.now());
+        row.setEndedAt(null);
+
+        when(assignmentDao.listAssignmentProjectionsByTraineeId(11L)).thenReturn(List.of(row));
+        when(taskDao.countByAssignmentId(88L)).thenReturn(0L);
+        when(taskDao.sumEstimatedDaysByAssignmentId(88L)).thenReturn(null);
+
+        List<AssignmentResponse> result = assignmentService.listAssignmentsForTrainee(11L);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).id()).isEqualTo(88L);
+        assertThat(result.get(0).status()).isEqualTo("ACTIVE");
     }
 
     @Test

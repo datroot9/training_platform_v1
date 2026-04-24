@@ -187,6 +187,8 @@ export interface WeeklySummaryResponse {
   assignmentId: number
   weekStart: string
   weekEnd: string
+  accomplishments: string[]
+  difficulties: string[]
   summaryText: string | null
   completionRate: number | null
   averageDailyHours: number | null

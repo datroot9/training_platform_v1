@@ -28,6 +28,12 @@ public interface AssignmentDao {
     Optional<AssignmentProjection> selectActiveAssignmentProjectionByTrainee(Long traineeId);
 
     @Select
+    List<AssignmentProjection> listAssignmentProjectionsByTraineeId(Long traineeId);
+
+    @Select
+    List<Long> listActiveAssignmentIds();
+
+    @Select
     long countByIdAndTrainee(Long assignmentId, Long traineeId);
 
     @Select

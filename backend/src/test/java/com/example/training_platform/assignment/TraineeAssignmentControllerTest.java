@@ -14,6 +14,7 @@ import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import com.example.training_platform.assignment.dto.AssignmentResponse;
 import com.example.training_platform.assignment.dto.AssignmentTaskResponse;
 import com.example.training_platform.auth.AuthenticatedUser;
 import com.example.training_platform.auth.JwtService;
@@ -50,6 +51,35 @@ class TraineeAssignmentControllerTest {
 
     @TempDir
     Path tempDir;
+
+    @Test
+    void listAssignmentsReturnsSuccessEnvelope() throws Exception {
+        AssignmentResponse row = new AssignmentResponse(
+                77L,
+                11L,
+                22L,
+                "Curriculum",
+                "Desc",
+                "1.0",
+                "Mentor",
+                "mentor@local",
+                10,
+                "CANCELLED",
+                LocalDateTime.now(),
+                LocalDateTime.now(),
+                2
+        );
+        when(assignmentService.listAssignmentsForTrainee(11L)).thenReturn(List.of(row));
+
+        mockMvc.perform(get("/api/trainee/assignments").principal(auth(11L, "trainee@local", "TRAINEE")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.message").value("Assignments fetched"))
+                .andExpect(jsonPath("$.data[0].id").value(77))
+                .andExpect(jsonPath("$.data[0].status").value("CANCELLED"));
+
+        verify(assignmentService).listAssignmentsForTrainee(11L);
+    }
 
     @Test
     void updateTaskStatusReturnsSuccessEnvelope() throws Exception {

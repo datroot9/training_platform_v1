@@ -22,6 +22,11 @@ export async function getActiveAssignmentOrNull(): Promise<AssignmentResponse | 
   }
 }
 
+/** All assignments for the current trainee (any status), newest first. */
+export async function listAssignments(): Promise<AssignmentResponse[]> {
+  return requestJson<AssignmentResponse[]>('/api/trainee/assignments')
+}
+
 export async function getAssignmentTasks(assignmentId: number): Promise<AssignmentTaskResponse[]> {
   return requestJson<AssignmentTaskResponse[]>(`/api/trainee/assignments/${assignmentId}/tasks`)
 }
@@ -76,6 +81,19 @@ export async function getDailyReportsByWeek(
   return requestJson<DailyReportResponse[]>(
     `/api/trainee/assignments/${assignmentId}/daily-reports?weekStart=${encodeURIComponent(toIsoDate(weekStart))}`,
   )
+}
+
+export async function listDailyReports(params: {
+  assignmentId?: number | null
+  fromDate?: string | Date | null
+  toDate?: string | Date | null
+} = {}): Promise<DailyReportResponse[]> {
+  const search = new URLSearchParams()
+  if (params.assignmentId != null) search.set('assignmentId', String(params.assignmentId))
+  if (params.fromDate != null) search.set('fromDate', toIsoDate(params.fromDate))
+  if (params.toDate != null) search.set('toDate', toIsoDate(params.toDate))
+  const query = search.toString()
+  return requestJson<DailyReportResponse[]>(`/api/trainee/daily-reports${query ? `?${query}` : ''}`)
 }
 
 export async function getDailyReportByDate(

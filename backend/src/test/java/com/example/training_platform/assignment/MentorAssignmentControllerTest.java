@@ -60,6 +60,22 @@ class MentorAssignmentControllerTest {
     }
 
     @Test
+    void listTraineeAssignmentsReturnsSuccessEnvelope() throws Exception {
+        AssignmentResponse row = sampleAssignmentResponse(77L, 11L, 22L);
+        when(assignmentService.listAssignmentsForMentor(5L, 11L)).thenReturn(List.of(row));
+
+        mockMvc.perform(get("/api/mentor/trainees/11/assignments")
+                        .principal(auth(5L, "mentor@local", "MENTOR")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.message").value("Assignments fetched"))
+                .andExpect(jsonPath("$.data[0].id").value(77))
+                .andExpect(jsonPath("$.data[0].status").value("ACTIVE"));
+
+        verify(assignmentService).listAssignmentsForMentor(5L, 11L);
+    }
+
+    @Test
     void getTraineeAssignmentTasksReturnsSuccessEnvelope() throws Exception {
         AssignmentTaskResponse task = new AssignmentTaskResponse(
                 200L,
