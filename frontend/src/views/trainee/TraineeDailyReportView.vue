@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
@@ -18,6 +19,7 @@ import { useAuthStore } from '../../stores/auth'
 
 const { assignment, tasks: assignmentTasks, hasAssignment, error: assignmentError } = injectTraineeAssignment()
 const auth = useAuthStore()
+const router = useRouter()
 
 const traineeDisplayName = computed(() => {
   const email = auth.user?.email ?? ''
@@ -131,6 +133,10 @@ const todayIso = computed(() => toIsoDate(new Date()))
 
 function normalizedWeeklyItems(items: string[] | null | undefined): string[] {
   return (items ?? []).map((item) => item.trim()).filter((item) => item.length > 0)
+}
+
+function goToWeeklyFeedbackHistory(): void {
+  void router.push({ name: 'trainee-weekly-feedback' })
 }
 
 const sortedReports = computed(() =>
@@ -683,6 +689,14 @@ watch(
             <p class="weekly-feedback-text">
               Mentor feedback: {{ latestWeeklySummary.mentorFeedback || 'No mentor feedback yet.' }}
             </p>
+            <Button
+              label="View full weekly feedback history"
+              icon="pi pi-arrow-right"
+              text
+              size="small"
+              class="weekly-feedback-cta"
+              @click="goToWeeklyFeedbackHistory"
+            />
           </div>
         </div>
 
@@ -738,11 +752,18 @@ watch(
 }
 
 .card-shell {
-  border: 1px solid color-mix(in srgb, var(--ui-accent-2) 30%, var(--ui-border));
+  border: 1px solid color-mix(in srgb, var(--ui-accent-2) 34%, var(--ui-border));
   border-radius: 12px;
-  background: linear-gradient(160deg, #ffffff 0%, color-mix(in srgb, #ffffff 90%, var(--ui-accent-soft-2)) 100%);
+  background: linear-gradient(
+    155deg,
+    color-mix(in srgb, #ffffff 74%, var(--ui-accent-soft-2)) 0%,
+    color-mix(in srgb, #ffffff 66%, var(--ui-accent-soft)) 58%,
+    color-mix(in srgb, #ffffff 72%, var(--ui-accent-2-soft)) 100%
+  );
   padding: 1rem;
-  box-shadow: var(--ui-shadow-md);
+  box-shadow:
+    0 12px 24px -18px color-mix(in srgb, var(--ui-accent-2) 50%, transparent),
+    var(--ui-shadow-md);
 }
 
 .daily-summary,
@@ -856,7 +877,11 @@ watch(
   text-align: left;
   border: 1px solid color-mix(in srgb, var(--ui-accent-2) 24%, var(--ui-border-soft));
   border-radius: 10px;
-  background: linear-gradient(150deg, #ffffff 0%, color-mix(in srgb, #ffffff 92%, var(--ui-accent-soft)) 100%);
+  background: linear-gradient(
+    150deg,
+    color-mix(in srgb, #ffffff 74%, var(--ui-accent-soft-2)) 0%,
+    color-mix(in srgb, #ffffff 66%, var(--ui-accent-soft)) 100%
+  );
   padding: 0.5rem 0.55rem;
   margin-bottom: 0.45rem;
   cursor: pointer;
@@ -986,7 +1011,11 @@ watch(
   padding: 0.95rem 1rem;
   overflow-y: auto;
   max-height: min(60vh, 620px);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.72) 0%, rgba(238, 244, 255, 0.62) 100%);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, #ffffff 70%, var(--ui-accent-soft-2)) 0%,
+    color-mix(in srgb, #ffffff 62%, var(--ui-surface-tint)) 100%
+  );
 }
 
 .form-grid {
@@ -1014,22 +1043,22 @@ watch(
 }
 
 .section-input--done {
-  background: linear-gradient(180deg, var(--ui-accent-2-soft) 0%, #ffffff 100%);
+  background: linear-gradient(180deg, color-mix(in srgb, #ffffff 50%, var(--ui-accent-2-soft)) 0%, #ffffff 100%);
 }
 
 .section-input--plan {
-  background: linear-gradient(180deg, var(--ui-surface-tint) 0%, #ffffff 100%);
+  background: linear-gradient(180deg, color-mix(in srgb, #ffffff 52%, var(--ui-surface-tint)) 0%, #ffffff 100%);
 }
 
 .section-input--blockers {
-  background: linear-gradient(180deg, var(--ui-warn-soft) 0%, #ffffff 100%);
+  background: linear-gradient(180deg, color-mix(in srgb, #ffffff 52%, var(--ui-warn-soft)) 0%, #ffffff 100%);
 }
 
 .report-resources {
   border: 1px solid var(--ui-border);
   border-radius: 10px;
   padding: 0.55rem 0.6rem;
-  background: linear-gradient(180deg, var(--ui-warm-soft) 0%, #ffffff 100%);
+  background: linear-gradient(180deg, color-mix(in srgb, #ffffff 54%, var(--ui-warm-soft)) 0%, #ffffff 100%);
   box-shadow: var(--ui-shadow-xs);
 }
 
@@ -1071,7 +1100,7 @@ watch(
   border-top: 1px solid var(--ui-border);
   padding: 0.8rem 1rem 1rem;
   margin-top: auto;
-  background: linear-gradient(180deg, #ffffff 0%, var(--ui-surface-soft) 100%);
+  background: linear-gradient(180deg, color-mix(in srgb, #ffffff 90%, var(--ui-accent-soft-2)) 0%, var(--ui-surface-soft) 100%);
   flex-shrink: 0;
 }
 
@@ -1089,7 +1118,11 @@ watch(
 .weekly-feedback {
   border-top: 1px solid var(--ui-border-soft);
   padding-top: 0.65rem;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, var(--ui-accent-2-soft) 100%);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0) 0%,
+    color-mix(in srgb, #ffffff 52%, var(--ui-accent-2-soft)) 100%
+  );
   border-radius: 10px;
   padding: 0.65rem 0.7rem 0.5rem;
 }

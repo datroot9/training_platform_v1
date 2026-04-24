@@ -118,19 +118,19 @@ function openChangePasswordDialog(): void {
   max-width: 1320px;
   margin: 0 auto;
   width: 100%;
-  border: 1px solid color-mix(in srgb, var(--ui-accent) 46%, var(--ui-border-soft));
+  border: 1px solid color-mix(in srgb, var(--ui-accent-2) 48%, var(--ui-border-soft));
   border-radius: var(--ui-radius-xl);
   background: linear-gradient(
-    180deg,
-    color-mix(in srgb, #ffffff 82%, var(--ui-accent-soft-2)) 0%,
-    color-mix(in srgb, #ffffff 74%, var(--ui-accent-soft)) 38%,
-    color-mix(in srgb, #ffffff 70%, var(--ui-accent-2-soft)) 72%,
-    color-mix(in srgb, #ffffff 74%, var(--ui-coral-soft)) 100%
+    165deg,
+    color-mix(in srgb, #ffffff 68%, var(--ui-accent-soft-2)) 0%,
+    color-mix(in srgb, #ffffff 62%, var(--ui-accent-soft)) 32%,
+    color-mix(in srgb, #ffffff 58%, var(--ui-accent-2-soft)) 68%,
+    color-mix(in srgb, #ffffff 64%, var(--ui-coral-soft)) 100%
   );
   box-shadow:
-    0 20px 42px -24px color-mix(in srgb, var(--ui-accent-2) 48%, transparent),
-    0 8px 20px rgba(36, 44, 70, 0.14),
-    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+    0 24px 40px -22px color-mix(in srgb, var(--ui-accent-2) 56%, transparent),
+    0 10px 22px rgba(36, 44, 70, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.78);
   backdrop-filter: blur(2px);
   overflow-y: auto;
 }

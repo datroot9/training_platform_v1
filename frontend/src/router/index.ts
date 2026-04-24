@@ -57,6 +57,11 @@ const router = createRouter({
           name: 'trainee-daily-report',
           component: () => import('../views/trainee/TraineeDailyReportView.vue'),
         },
+        {
+          path: 'weekly-feedback',
+          name: 'trainee-weekly-feedback',
+          component: () => import('../views/trainee/TraineeWeeklyFeedbackView.vue'),
+        },
         { path: 'assignment', redirect: { name: 'trainee-assignment' } },
       ],
     },

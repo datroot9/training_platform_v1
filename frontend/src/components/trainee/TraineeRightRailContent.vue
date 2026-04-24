@@ -62,6 +62,7 @@ const greeting = computed(() => {
 const currentFocusTask = computed(() => tasks.value.find((task) => task.status !== 'DONE') ?? null)
 const assignmentLinkActive = computed(() => route.name === 'trainee-assignment')
 const dailyReportLinkActive = computed(() => route.name === 'trainee-daily-report')
+const weeklyFeedbackLinkActive = computed(() => route.name === 'trainee-weekly-feedback')
 
 function go(to: RouteLocationRaw): void {
   void router.push(to)
@@ -158,6 +159,15 @@ function onOpenChangePassword(): void {
           severity="secondary"
           :aria-current="dailyReportLinkActive ? 'page' : undefined"
           @click="go({ name: 'trainee-daily-report' })"
+        />
+        <Button
+          label="Weekly feedback"
+          icon="pi pi-comments"
+          :class="['w-full', 'link-btn', weeklyFeedbackLinkActive ? 'link-btn--active' : 'link-btn--idle']"
+          :outlined="!weeklyFeedbackLinkActive"
+          severity="secondary"
+          :aria-current="weeklyFeedbackLinkActive ? 'page' : undefined"
+          @click="go({ name: 'trainee-weekly-feedback' })"
         />
         <Button
           label="Change password"
